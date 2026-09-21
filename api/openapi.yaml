@@ -1,0 +1,51 @@
+openapi: 3.0.0
+info:
+  title: Surveil API
+  description: Surveillance ingestion and search service.
+  version: 0.1.0
+
+paths:
+  /healthz:
+    get:
+      summary: Service Health Check
+      description: Returns the operational status of the service and its critical dependencies.
+      tags:
+        - System
+      responses:
+        '200':
+          description: Service is healthy or operating in a degraded state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+    head:
+      summary: Service Health Check
+      description: Returns the operational status of the service and its critical dependencies.
+      tags:
+        - System
+      responses:
+        '200':
+          description: Service is healthy or operating in a degraded state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  schemas:
+    HealthState:
+      type: string
+      description: Overall operational state of the service or subsystem.
+      enum:
+        - ok
+        # - degraded
+        - down
+      example: ok
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/HealthState'
