@@ -6,7 +6,7 @@ REST API combining [LabStack Echo v5](https://github.com/labstack/echo) with cod
 
 - **Go 1.25+** (required by Echo v5)
 
-## Quick Start
+## Quick Start (For Developers)
 
 1. **Install dependencies and generate server boilerplate**:
    ```bash
