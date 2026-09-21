@@ -18,3 +18,8 @@ REST API combining [LabStack Echo v5](https://github.com/labstack/echo) with cod
    ```bash
    make run
    ```
+
+1. Run tests.
+   ```bash
+   make test
+   ```
