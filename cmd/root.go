@@ -13,7 +13,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 
-	"github.com/leomichalski/surveil-api/api"
+	httpTransport "github.com/leomichalski/surveil-api/internal/transport/http"
 
 	"github.com/spf13/cobra"
 )
@@ -38,8 +38,8 @@ var rootCmd = &cobra.Command{
 		e.Use(middleware.Recover())
 
 		// Handlers and route registration
-		server := api.NewServer()
-		api.RegisterHandlers(e, server)
+		server := httpTransport.NewServer()
+		httpTransport.RegisterHandlers(e, server)
 
 		// 1. Create a context that listens for OS interrupt signals.
 		// When one of these signals occurs, the context is automatically canceled.

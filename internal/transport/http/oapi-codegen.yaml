@@ -1,6 +1,6 @@
-package: api
+package: http
 generate:
   echo5-server: true
   models: true
   embedded-spec: true
-output: api/gen.go
+output: internal/transport/http/gen.go
