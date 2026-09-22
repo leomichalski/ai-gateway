@@ -1,5 +1,5 @@
 // internal/transport/http/swagger.go
-package http
+package api
 
 import (
 	"net/http"
