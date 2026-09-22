@@ -15,7 +15,11 @@ func ConfigureSwagger(e *echo.Echo) {
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to load swagger spec"})
 		}
-		return c.JSON(http.StatusOK, swagger)
+		data, err := swagger.MarshalJSON()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to serialize swagger spec"})
+		}
+		return c.JSONBlob(http.StatusOK, data)
 	}))
 
 	// Explicitly cast to echo.HandlerFunc here as well

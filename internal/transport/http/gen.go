@@ -20,6 +20,84 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
+// Defines values for ChatCompletionChoiceFinishReason.
+const (
+	ContentFilter ChatCompletionChoiceFinishReason = "content_filter"
+	Length        ChatCompletionChoiceFinishReason = "length"
+	Stop          ChatCompletionChoiceFinishReason = "stop"
+	ToolCalls     ChatCompletionChoiceFinishReason = "tool_calls"
+)
+
+// Valid indicates whether the value is a known member of the ChatCompletionChoiceFinishReason enum.
+func (e ChatCompletionChoiceFinishReason) Valid() bool {
+	switch e {
+	case ContentFilter:
+		return true
+	case Length:
+		return true
+	case Stop:
+		return true
+	case ToolCalls:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatCompletionRequestMessageRole.
+const (
+	ChatCompletionRequestMessageRoleAssistant ChatCompletionRequestMessageRole = "assistant"
+	ChatCompletionRequestMessageRoleSystem    ChatCompletionRequestMessageRole = "system"
+	ChatCompletionRequestMessageRoleTool      ChatCompletionRequestMessageRole = "tool"
+	ChatCompletionRequestMessageRoleUser      ChatCompletionRequestMessageRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the ChatCompletionRequestMessageRole enum.
+func (e ChatCompletionRequestMessageRole) Valid() bool {
+	switch e {
+	case ChatCompletionRequestMessageRoleAssistant:
+		return true
+	case ChatCompletionRequestMessageRoleSystem:
+		return true
+	case ChatCompletionRequestMessageRoleTool:
+		return true
+	case ChatCompletionRequestMessageRoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatCompletionResponseMessageRole.
+const (
+	ChatCompletionResponseMessageRoleAssistant ChatCompletionResponseMessageRole = "assistant"
+)
+
+// Valid indicates whether the value is a known member of the ChatCompletionResponseMessageRole enum.
+func (e ChatCompletionResponseMessageRole) Valid() bool {
+	switch e {
+	case ChatCompletionResponseMessageRoleAssistant:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateChatCompletionResponseObject.
+const (
+	ChatCompletion CreateChatCompletionResponseObject = "chat.completion"
+)
+
+// Valid indicates whether the value is a known member of the CreateChatCompletionResponseObject enum.
+func (e CreateChatCompletionResponseObject) Valid() bool {
+	switch e {
+	case ChatCompletion:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthState.
 const (
 	Down HealthState = "down"
@@ -38,22 +116,96 @@ func (e HealthState) Valid() bool {
 	}
 }
 
-// ChatRequest defines model for ChatRequest.
-type ChatRequest struct {
-	Prompt    string  `json:"prompt"`
-	SessionId *string `json:"session_id,omitempty"`
+// ChatCompletionChoice defines model for ChatCompletionChoice.
+type ChatCompletionChoice struct {
+	FinishReason ChatCompletionChoiceFinishReason `json:"finish_reason"`
+	Index        int                              `json:"index"`
+	Message      ChatCompletionResponseMessage    `json:"message"`
 }
 
-// ChatResponse defines model for ChatResponse.
-type ChatResponse struct {
-	Answer     string  `json:"answer"`
-	Provider   *string `json:"provider,omitempty"`
-	TokensUsed *int32  `json:"tokens_used,omitempty"`
+// ChatCompletionChoiceFinishReason defines model for ChatCompletionChoice.FinishReason.
+type ChatCompletionChoiceFinishReason string
+
+// ChatCompletionRequestMessage defines model for ChatCompletionRequestMessage.
+type ChatCompletionRequestMessage struct {
+	// Content The contents of the message.
+	Content string `json:"content"`
+
+	// Role The role of the author of this message.
+	Role ChatCompletionRequestMessageRole `json:"role"`
+}
+
+// ChatCompletionRequestMessageRole The role of the author of this message.
+type ChatCompletionRequestMessageRole string
+
+// ChatCompletionResponseMessage defines model for ChatCompletionResponseMessage.
+type ChatCompletionResponseMessage struct {
+	Content string                            `json:"content"`
+	Role    ChatCompletionResponseMessageRole `json:"role"`
+}
+
+// ChatCompletionResponseMessageRole defines model for ChatCompletionResponseMessage.Role.
+type ChatCompletionResponseMessageRole string
+
+// ChatCompletionUsage defines model for ChatCompletionUsage.
+type ChatCompletionUsage struct {
+	CompletionTokens int32 `json:"completion_tokens"`
+	PromptTokens     int32 `json:"prompt_tokens"`
+	TotalTokens      int32 `json:"total_tokens"`
+}
+
+// CreateChatCompletionRequest defines model for CreateChatCompletionRequest.
+type CreateChatCompletionRequest struct {
+	// Messages A list of messages comprising the conversation so far.
+	Messages []ChatCompletionRequestMessage `json:"messages"`
+
+	// Model ID of the model to use (e.g., 'gpt-4o').
+	Model string `json:"model"`
+
+	// Stream If set, partial message deltas will be sent.
+	Stream *bool `json:"stream,omitempty"`
+
+	// Temperature What sampling temperature to use.
+	Temperature *float32 `json:"temperature,omitempty"`
+}
+
+// CreateChatCompletionResponse defines model for CreateChatCompletionResponse.
+type CreateChatCompletionResponse struct {
+	Choices []ChatCompletionChoice `json:"choices"`
+
+	// Created The Unix timestamp (in seconds) of when the chat completion was created.
+	Created int64 `json:"created"`
+
+	// Id A unique identifier for the chat completion.
+	Id string `json:"id"`
+
+	// Model The model used for the chat completion.
+	Model  string                             `json:"model"`
+	Object CreateChatCompletionResponseObject `json:"object"`
+	Usage  ChatCompletionUsage                `json:"usage"`
+}
+
+// CreateChatCompletionResponseObject defines model for CreateChatCompletionResponse.Object.
+type CreateChatCompletionResponseObject string
+
+// ErrorObject defines model for ErrorObject.
+type ErrorObject struct {
+	// Code An optional error code identifying the error type (e.g., 'model_not_found').
+	Code *string `json:"code,omitempty"`
+
+	// Message A human-readable message providing more details about the error.
+	Message string `json:"message"`
+
+	// Param The parameter that caused the error, if applicable.
+	Param *string `json:"param,omitempty"`
+
+	// Type The type of error that occurred (e.g., 'invalid_request_error', 'auth_subsystem_error').
+	Type string `json:"type"`
 }
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
-	Message *string `json:"message,omitempty"`
+	Error ErrorObject `json:"error"`
 }
 
 // HealthResponse defines model for HealthResponse.
@@ -69,8 +221,8 @@ type HealthResponse struct {
 // Example: ok
 type HealthState string
 
-// PostApiV1ChatJSONRequestBody defines body for PostApiV1Chat for application/json ContentType.
-type PostApiV1ChatJSONRequestBody = ChatRequest
+// PostV1ChatCompletionJSONRequestBody defines body for PostV1ChatCompletion for application/json ContentType.
+type PostV1ChatCompletionJSONRequestBody = CreateChatCompletionRequest
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -146,20 +298,6 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
-	// PostApiV1ChatWithBody Executes a prompt using a LLM/Agent
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
-	PostApiV1ChatWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PostApiV1Chat Executes a prompt using a LLM/Agent
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
-	PostApiV1Chat(ctx context.Context, body PostApiV1ChatJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// GetHealthz Service Health Check
 	//
 	// Returns the operational status of the service and its critical dependencies.
@@ -173,40 +311,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with HEAD /healthz (the `HeadHealthz` operationId).
 	HeadHealthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-}
 
-// PostApiV1ChatWithBody Executes a prompt using a LLM/Agent
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
-func (c *Client) PostApiV1ChatWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostApiV1ChatRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
+	// PostV1ChatCompletionWithBody Creates a model response for the given chat conversation
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/chat/completions (the `PostV1ChatCompletion` operationId).
+	PostV1ChatCompletionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-// PostApiV1Chat Executes a prompt using a LLM/Agent
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
-func (c *Client) PostApiV1Chat(ctx context.Context, body PostApiV1ChatJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostApiV1ChatRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
+	// PostV1ChatCompletion Creates a model response for the given chat conversation
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/chat/completions (the `PostV1ChatCompletion` operationId).
+	PostV1ChatCompletion(ctx context.Context, body PostV1ChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // GetHealthz Service Health Check
@@ -243,44 +361,38 @@ func (c *Client) HeadHealthz(ctx context.Context, reqEditors ...RequestEditorFn)
 	return c.Client.Do(req)
 }
 
-// NewPostApiV1ChatRequest calls the generic PostApiV1Chat builder with application/json body
-func NewPostApiV1ChatRequest(server string, body PostApiV1ChatJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
+// PostV1ChatCompletionWithBody Creates a model response for the given chat conversation
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/chat/completions (the `PostV1ChatCompletion` operationId).
+func (c *Client) PostV1ChatCompletionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostV1ChatCompletionRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
-	bodyReader = bytes.NewReader(buf)
-	return NewPostApiV1ChatRequestWithBody(server, "application/json", bodyReader)
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
-// NewPostApiV1ChatRequestWithBody constructs an http.Request for the PostApiV1Chat method, with any body, and a specified content type
-func NewPostApiV1ChatRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
+// PostV1ChatCompletion Creates a model response for the given chat conversation
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/chat/completions (the `PostV1ChatCompletion` operationId).
+func (c *Client) PostV1ChatCompletion(ctx context.Context, body PostV1ChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostV1ChatCompletionRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
-
-	operationPath := fmt.Sprintf("/api/v1/chat")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
 		return nil, err
 	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
+	return c.Client.Do(req)
 }
 
 // NewGetHealthzRequest constructs an http.Request for the GetHealthz method
@@ -337,6 +449,46 @@ func NewHeadHealthzRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewPostV1ChatCompletionRequest calls the generic PostV1ChatCompletion builder with application/json body
+func NewPostV1ChatCompletionRequest(server string, body PostV1ChatCompletionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostV1ChatCompletionRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostV1ChatCompletionRequestWithBody constructs an http.Request for the PostV1ChatCompletion method, with any body, and a specified content type
+func NewPostV1ChatCompletionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/chat/completions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -381,20 +533,6 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
-	// PostApiV1ChatWithBodyWithResponse Executes a prompt using a LLM/Agent
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
-	PostApiV1ChatWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiV1ChatResponse, error)
-
-	// PostApiV1ChatWithResponse Executes a prompt using a LLM/Agent
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
-	PostApiV1ChatWithResponse(ctx context.Context, body PostApiV1ChatJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiV1ChatResponse, error)
-
 	// GetHealthzWithResponse Service Health Check
 	//
 	// Returns the operational status of the service and its critical dependencies.
@@ -412,54 +550,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with HEAD /healthz (the `HeadHealthz` operationId).
 	HeadHealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HeadHealthzResponse, error)
-}
 
-type PostApiV1ChatResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ChatResponse
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *ErrorResponse
-}
+	// PostV1ChatCompletionWithBodyWithResponse Creates a model response for the given chat conversation
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/chat/completions (the `PostV1ChatCompletion` operationId).
+	PostV1ChatCompletionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV1ChatCompletionResponse, error)
 
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r PostApiV1ChatResponse) GetJSON200() *ChatResponse {
-	return r.JSON200
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r PostApiV1ChatResponse) GetJSON500() *ErrorResponse {
-	return r.JSON500
-}
-
-// GetBody returns the raw response body bytes
-func (r PostApiV1ChatResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r PostApiV1ChatResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PostApiV1ChatResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r PostApiV1ChatResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
+	// PostV1ChatCompletionWithResponse Creates a model response for the given chat conversation
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/chat/completions (the `PostV1ChatCompletion` operationId).
+	PostV1ChatCompletionWithResponse(ctx context.Context, body PostV1ChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*PostV1ChatCompletionResponse, error)
 }
 
 type GetHealthzResponse struct {
@@ -544,30 +648,66 @@ func (r HeadHealthzResponse) ContentType() string {
 	return ""
 }
 
-// PostApiV1ChatWithBodyWithResponse Executes a prompt using a LLM/Agent
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
-func (c *ClientWithResponses) PostApiV1ChatWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiV1ChatResponse, error) {
-	rsp, err := c.PostApiV1ChatWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostApiV1ChatResponse(rsp)
+type PostV1ChatCompletionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CreateChatCompletionResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ErrorResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *ErrorResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
 }
 
-// PostApiV1ChatWithResponse Executes a prompt using a LLM/Agent
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
-func (c *ClientWithResponses) PostApiV1ChatWithResponse(ctx context.Context, body PostApiV1ChatJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiV1ChatResponse, error) {
-	rsp, err := c.PostApiV1Chat(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostV1ChatCompletionResponse) GetJSON200() *CreateChatCompletionResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostV1ChatCompletionResponse) GetJSON400() *ErrorResponse {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostV1ChatCompletionResponse) GetJSON401() *ErrorResponse {
+	return r.JSON401
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PostV1ChatCompletionResponse) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r PostV1ChatCompletionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostV1ChatCompletionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
 	}
-	return ParsePostApiV1ChatResponse(rsp)
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostV1ChatCompletionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostV1ChatCompletionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 // GetHealthzWithResponse Service Health Check
@@ -600,37 +740,30 @@ func (c *ClientWithResponses) HeadHealthzWithResponse(ctx context.Context, reqEd
 	return ParseHeadHealthzResponse(rsp)
 }
 
-// ParsePostApiV1ChatResponse parses an HTTP response from a PostApiV1ChatWithResponse call
-func ParsePostApiV1ChatResponse(rsp *http.Response) (*PostApiV1ChatResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
+// PostV1ChatCompletionWithBodyWithResponse Creates a model response for the given chat conversation
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/chat/completions (the `PostV1ChatCompletion` operationId).
+func (c *ClientWithResponses) PostV1ChatCompletionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostV1ChatCompletionResponse, error) {
+	rsp, err := c.PostV1ChatCompletionWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
+	return ParsePostV1ChatCompletionResponse(rsp)
+}
 
-	response := &PostApiV1ChatResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
+// PostV1ChatCompletionWithResponse Creates a model response for the given chat conversation
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/chat/completions (the `PostV1ChatCompletion` operationId).
+func (c *ClientWithResponses) PostV1ChatCompletionWithResponse(ctx context.Context, body PostV1ChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*PostV1ChatCompletionResponse, error) {
+	rsp, err := c.PostV1ChatCompletion(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
 	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ChatResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
+	return ParsePostV1ChatCompletionResponse(rsp)
 }
 
 // ParseGetHealthzResponse parses an HTTP response from a GetHealthzWithResponse call
@@ -685,31 +818,69 @@ func ParseHeadHealthzResponse(rsp *http.Response) (*HeadHealthzResponse, error) 
 	return response, nil
 }
 
+// ParsePostV1ChatCompletionResponse parses an HTTP response from a PostV1ChatCompletionWithResponse call
+func ParsePostV1ChatCompletionResponse(rsp *http.Response) (*PostV1ChatCompletionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostV1ChatCompletionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CreateChatCompletionResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// PostApiV1Chat Executes a prompt using a LLM/Agent
-	// (POST /api/v1/chat)
-	PostApiV1Chat(ctx *echo.Context) error
 	// GetHealthz Service Health Check
 	// (GET /healthz)
 	GetHealthz(ctx *echo.Context) error
 	// HeadHealthz Service Health Check
 	// (HEAD /healthz)
 	HeadHealthz(ctx *echo.Context) error
+	// PostV1ChatCompletion Creates a model response for the given chat conversation
+	// (POST /v1/chat/completions)
+	PostV1ChatCompletion(ctx *echo.Context) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler ServerInterface
-}
-
-// PostApiV1Chat converts echo context to params.
-func (w *ServerInterfaceWrapper) PostApiV1Chat(ctx *echo.Context) error {
-	var err error
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.PostApiV1Chat(ctx)
-	return err
 }
 
 // GetHealthz converts echo context to params.
@@ -727,6 +898,15 @@ func (w *ServerInterfaceWrapper) HeadHealthz(ctx *echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.HeadHealthz(ctx)
+	return err
+}
+
+// PostV1ChatCompletion converts echo context to params.
+func (w *ServerInterfaceWrapper) PostV1ChatCompletion(ctx *echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PostV1ChatCompletion(ctx)
 	return err
 }
 
@@ -779,44 +959,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 
 	router.GET(options.BaseURL+"/healthz", wrapper.GetHealthz, options.OperationMiddlewares["GetHealthz"]...)
 	router.HEAD(options.BaseURL+"/healthz", wrapper.HeadHealthz, options.OperationMiddlewares["HeadHealthz"]...)
-	router.POST(options.BaseURL+"/api/v1/chat", wrapper.PostApiV1Chat, options.OperationMiddlewares["PostApiV1Chat"]...)
+	router.POST(options.BaseURL+"/v1/chat/completions", wrapper.PostV1ChatCompletion, options.OperationMiddlewares["PostV1ChatCompletion"]...)
 
-}
-
-type PostApiV1ChatRequestObject struct {
-	Body *PostApiV1ChatJSONRequestBody
-}
-
-type PostApiV1ChatResponseObject interface {
-	VisitPostApiV1ChatResponse(w http.ResponseWriter) error
-}
-
-type PostApiV1Chat200JSONResponse ChatResponse
-
-func (response PostApiV1Chat200JSONResponse) VisitPostApiV1ChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostApiV1Chat500JSONResponse ErrorResponse
-
-func (response PostApiV1Chat500JSONResponse) VisitPostApiV1ChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
 }
 
 type GetHealthzRequestObject struct {
@@ -861,17 +1005,81 @@ func (response HeadHealthz200JSONResponse) VisitHeadHealthzResponse(w http.Respo
 	return err
 }
 
+type PostV1ChatCompletionRequestObject struct {
+	Body *PostV1ChatCompletionJSONRequestBody
+}
+
+type PostV1ChatCompletionResponseObject interface {
+	VisitPostV1ChatCompletionResponse(w http.ResponseWriter) error
+}
+
+type PostV1ChatCompletion200JSONResponse CreateChatCompletionResponse
+
+func (response PostV1ChatCompletion200JSONResponse) VisitPostV1ChatCompletionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostV1ChatCompletion400JSONResponse ErrorResponse
+
+func (response PostV1ChatCompletion400JSONResponse) VisitPostV1ChatCompletionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostV1ChatCompletion401JSONResponse ErrorResponse
+
+func (response PostV1ChatCompletion401JSONResponse) VisitPostV1ChatCompletionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostV1ChatCompletion500JSONResponse ErrorResponse
+
+func (response PostV1ChatCompletion500JSONResponse) VisitPostV1ChatCompletionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// PostApiV1Chat Executes a prompt using a LLM/Agent
-	// (POST /api/v1/chat)
-	PostApiV1Chat(ctx context.Context, request PostApiV1ChatRequestObject) (PostApiV1ChatResponseObject, error)
 	// GetHealthz Service Health Check
 	// (GET /healthz)
 	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
 	// HeadHealthz Service Health Check
 	// (HEAD /healthz)
 	HeadHealthz(ctx context.Context, request HeadHealthzRequestObject) (HeadHealthzResponseObject, error)
+	// PostV1ChatCompletion Creates a model response for the given chat conversation
+	// (POST /v1/chat/completions)
+	PostV1ChatCompletion(ctx context.Context, request PostV1ChatCompletionRequestObject) (PostV1ChatCompletionResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx *echo.Context, request any) (any, error)
@@ -884,45 +1092,6 @@ func NewStrictHandler(ssi StrictServerInterface, middlewares []StrictMiddlewareF
 type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
-}
-
-// PostApiV1Chat operation middleware
-func (sh *strictHandler) PostApiV1Chat(ctx *echo.Context) error {
-	var request PostApiV1ChatRequestObject
-
-	var body PostApiV1ChatJSONRequestBody
-	var err error
-	if _, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
-		// Bind only the request body, so that path and query parameters
-		// are not also bound into the body struct.
-		err = echo.BindBody(ctx, &body)
-	} else {
-		// A custom binder is installed on the Echo instance; defer to it
-		// entirely, since echo.Binder does not expose body-only binding.
-		err = ctx.Bind(&body)
-	}
-	if err != nil {
-		return err
-	}
-	request.Body = &body
-
-	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.PostApiV1Chat(ctx.Request().Context(), request.(PostApiV1ChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "PostApiV1Chat")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		return err
-	} else if validResponse, ok := response.(PostApiV1ChatResponseObject); ok {
-		return validResponse.VisitPostApiV1ChatResponse(ctx.Response())
-	} else if response != nil {
-		return fmt.Errorf("unexpected response type: %T", response)
-	}
-	return nil
 }
 
 // GetHealthz operation middleware
@@ -971,22 +1140,72 @@ func (sh *strictHandler) HeadHealthz(ctx *echo.Context) error {
 	return nil
 }
 
+// PostV1ChatCompletion operation middleware
+func (sh *strictHandler) PostV1ChatCompletion(ctx *echo.Context) error {
+	var request PostV1ChatCompletionRequestObject
+
+	var body PostV1ChatCompletionJSONRequestBody
+	var err error
+	if _, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// Bind only the request body, so that path and query parameters
+		// are not also bound into the body struct.
+		err = echo.BindBody(ctx, &body)
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding.
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.PostV1ChatCompletion(ctx.Request().Context(), request.(PostV1ChatCompletionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostV1ChatCompletion")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(PostV1ChatCompletionResponseObject); ok {
+		return validResponse.VisitPostV1ChatCompletionResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

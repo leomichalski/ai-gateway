@@ -6,11 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"google.golang.org/adk/v2/agent"
-	"google.golang.org/adk/v2/agent/llmagent"
+	"google.golang.org/adk/v2/model"
 	"google.golang.org/adk/v2/model/gemini"
-	"google.golang.org/adk/v2/runner"
-	"google.golang.org/adk/v2/session"
 	"google.golang.org/genai"
 
 	// "google.golang.org/adk/v2/tool"
@@ -33,8 +30,8 @@ func NewGoogleADKAdapter() outbound.AgentRunner {
 }
 
 // Implementa a porta AgentRunner exigida pelo Gateway
-func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, secretProvider outbound.SecretProvider, sessionID string, prompt string) (*domain.ChatResult, error) {
-	slog.Debug("Executing ADK task", slog.String("session_id", sessionID))
+func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, secretProvider outbound.SecretProvider, chatRequest domain.ChatRequest) (*domain.ChatResult, error) {
+	// slog.Debug("Executing ADK task", slog.String("session_id", sessionID))
 	// Enforce timeouts to protect the Gateway (Circuit Breaker baseline)
 
 	// TODO: parameterize timeout
@@ -47,8 +44,7 @@ func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, secretProvider outbo
 		return nil, err
 	}
 
-	// TODO: refactor when there is model storage
-	model, err := gemini.NewModel(ctx, "gemini-2.5-flash", &genai.ClientConfig{
+	llmModel, err := gemini.NewModel(ctx, chatRequest.Model, &genai.ClientConfig{
 		APIKey: key,
 	})
 	if err != nil {
@@ -56,84 +52,77 @@ func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, secretProvider outbo
 		return nil, err
 	}
 
-	// TODO: refactor when there is agent storage
-	currentAgent, err := llmagent.New(llmagent.Config{
-		Name:        "current_agent",
-		Model:       model,
-		Description: "Qual é a capital do Brasil?",
-		Instruction: "Você é um guia de turismo brasileiro.",
-	})
-	if err != nil {
-		slog.Error("Failed to create agent: %v", err)
-		return nil, err
+	var contents []*genai.Content
+	for _, msg := range chatRequest.Messages {
+		var role genai.Role
+		switch msg.Role {
+		// case "system":
+		// 	role = genai.RoleSystem
+		case "user":
+			role = genai.RoleUser
+		case "assistant":
+			role = genai.RoleModel // Gemini uses 'model' for the assistant role
+		default:
+			role = genai.RoleUser
+		}
+		contents = append(contents, genai.NewContentFromText(msg.Content, role))
 	}
 
-	// Create an in-memory session service and instantiate a session
-	appName := "aigateway"
-	// TODO: refactor when there are users
-	userID := "user-123"
-
-	sessionService := session.InMemoryService()
-	sessResp, err := sessionService.Create(ctx, &session.CreateRequest{
-		AppName:   appName,
-		UserID:    userID,
-		SessionID: sessionID,
-	})
-	if err != nil {
-		slog.Error("Failed to create session: %v", err)
-		return nil, err
-
+	var genConfig *genai.GenerateContentConfig
+	if chatRequest.Temperature != nil {
+		genConfig = &genai.GenerateContentConfig{
+			Temperature: chatRequest.Temperature,
+		}
+	}
+	// Direct Stateless Generation 
+	llmReq := &model.LLMRequest{
+		Model:    chatRequest.Model,
+		Contents: contents,
+		Config: genConfig,
+		// Tools:
 	}
 
-	// Initialize the Runner (replacing launcher.Run)
-	r, err := runner.New(runner.Config{
-		AppName:        appName,
-		Agent:          currentAgent,
-		SessionService: sessionService,
-	})
-	if err != nil {
-		slog.Error("Failed to create runner: %v", err)
-		return nil, err
-
-	}
-
-	// Construct the user input message
-	msg := genai.NewContentFromText(prompt, genai.RoleUser)
-
-	// Run the agent and capture the response into a variable
-	var responseBuilder strings.Builder
-	var (
-		promptTokens     int32
-		candidatesTokens int32
-		totalTokens      int32
-	)
-
-	for event, err := range r.Run(ctx, userID, sessResp.Session.ID(), msg, agent.RunConfig{}) {
+	var lastResp *model.LLMResponse = nil
+	for resp, err := range llmModel.GenerateContent(ctx, llmReq, false) {
 		if err != nil {
-			slog.Error("Error during agent run: %v", err)
 			return nil, err
 		}
+		lastResp = resp
+	}
 
-		// Streamed parts can contain text, tool calls, or other payloads.
-		if event.Content != nil {
-			for _, part := range event.Content.Parts {
-				if part.Text != "" {
-					responseBuilder.WriteString(part.Text)
-				}
+	// 3. Extract the response text
+	var responseBuilder strings.Builder
+	if lastResp != nil && lastResp.Content != nil {
+		for _, part := range lastResp.Content.Parts {
+			if part.Text != "" {
+				responseBuilder.WriteString(part.Text)
 			}
 		}
-		// Accumulate token counts
-		if event.UsageMetadata != nil {
-			promptTokens += event.UsageMetadata.PromptTokenCount
-			candidatesTokens += event.UsageMetadata.CandidatesTokenCount
-			totalTokens += event.UsageMetadata.TotalTokenCount
-		}
 	}
 
-	result := &domain.ChatResult{
-		Answer:     responseBuilder.String(),
-		TokensUsed: totalTokens, // TODO: change
-		Provider:   "google-adk",
+	// 4. Extract Usage metadata
+	var (
+		promptTokens int32
+		compTokens   int32
+		totalTokens  int32
+	)
+	if lastResp.UsageMetadata != nil {
+		promptTokens = lastResp.UsageMetadata.PromptTokenCount
+		compTokens = lastResp.UsageMetadata.CandidatesTokenCount
+		totalTokens = lastResp.UsageMetadata.TotalTokenCount
 	}
-	return result, nil
+
+	// 5. Determine Finish Reason based on ADK's last response flag
+	finishReason := "stop"
+	if lastResp.FinishReason != "" {
+		finishReason = strings.ToLower(string(lastResp.FinishReason))
+	}
+	return &domain.ChatResult{
+		Answer:           responseBuilder.String(),
+		PromptTokens:     promptTokens,
+		CompletionTokens: compTokens,
+		TotalTokens:      totalTokens,
+		Provider:         "google-adk",
+		FinishReason:     finishReason,
+	}, nil
 }

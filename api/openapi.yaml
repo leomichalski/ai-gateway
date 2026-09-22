@@ -10,7 +10,7 @@ paths:
       summary: Service Health Check
       description: Returns the operational status of the service and its critical dependencies.
       tags:
-        - System
+      - System
       responses:
         '200':
           description: Service is healthy or operating in a degraded state.
@@ -22,7 +22,7 @@ paths:
       summary: Service Health Check
       description: Returns the operational status of the service and its critical dependencies.
       tags:
-        - System
+      - System
       responses:
         '200':
           description: Service is healthy or operating in a degraded state.
@@ -31,25 +31,37 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
 
-  /api/v1/chat:
+  /v1/chat/completions:
     post:
-      summary: Executes a prompt using a LLM/Agent
-      operationId: PostApiV1Chat
+      summary: Creates a model response for the given chat conversation
+      operationId: PostV1ChatCompletion
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ChatRequest'
+              $ref: '#/components/schemas/CreateChatCompletionRequest'
       responses:
         '200':
-          description: Success response
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ChatResponse'
+                $ref: '#/components/schemas/CreateChatCompletionResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
-          description: Internal error
+          description: Internal Server Error
           content:
             application/json:
               schema:
@@ -61,41 +73,159 @@ components:
       type: string
       description: Overall operational state of the service or subsystem.
       enum:
-        - ok
-        # - degraded
-        - down
+      - ok
+      # - degraded
+      - down
       example: ok
     HealthResponse:
       type: object
       required:
-        - status
+      - status
       properties:
         status:
           $ref: '#/components/schemas/HealthState'
 
-    ChatRequest:
+    # --- OpenAI Compatible Chat Schemas ---
+
+    ChatCompletionRequestMessage:
       type: object
       required:
-        - prompt
+      - role
+      - content
       properties:
-        prompt:
+        role:
           type: string
-        session_id:
+          enum: [system, user, assistant, tool]
+          description: The role of the author of this message.
+        content:
           type: string
-    ChatResponse:
+          description: The contents of the message.
+
+    CreateChatCompletionRequest:
       type: object
       required:
-        - answer
+      - model
+      - messages
       properties:
-        answer:
+        model:
           type: string
-        tokens_used:
+          description: ID of the model to use (e.g., 'gpt-4o').
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionRequestMessage'
+          description: A list of messages comprising the conversation so far.
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 1
+          description: What sampling temperature to use.
+        stream:
+          type: boolean
+          default: false
+          description: If set, partial message deltas will be sent.
+
+    ChatCompletionResponseMessage:
+      type: object
+      required:
+      - role
+      - content
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+        content:
+          type: string
+
+    ChatCompletionChoice:
+      type: object
+      required:
+      - index
+      - message
+      - finish_reason
+      properties:
+        index:
+          type: integer
+        message:
+          $ref: '#/components/schemas/ChatCompletionResponseMessage'
+        finish_reason:
+          type: string
+          enum: [stop, length, tool_calls, content_filter]
+
+    ChatCompletionUsage:
+      type: object
+      required:
+      - prompt_tokens
+      - completion_tokens
+      - total_tokens
+      properties:
+        prompt_tokens:
           type: integer
           format: int32
-        provider:
-          type: string
-    ErrorResponse:
+        completion_tokens:
+          type: integer
+          format: int32
+        total_tokens:
+          type: integer
+          format: int32
+
+    CreateChatCompletionResponse:
       type: object
+      required:
+      - id
+      - object
+      - created
+      - model
+      - choices
+      - usage
+      properties:
+        id:
+          type: string
+          description: A unique identifier for the chat completion.
+        object:
+          type: string
+          enum: [chat.completion]
+        created:
+          type: integer
+          format: int64
+          description: The Unix timestamp (in seconds) of when the chat completion was created.
+        model:
+          type: string
+          description: The model used for the chat completion.
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionChoice'
+        usage:
+          $ref: '#/components/schemas/ChatCompletionUsage'
+
+    # --- Standard OpenAI Error Object ---
+
+    ErrorObject:
+      type: object
+      required:
+      - message
+      - type
       properties:
         message:
           type: string
+          description: A human-readable message providing more details about the error.
+        type:
+          type: string
+          description: The type of error that occurred (e.g., 'invalid_request_error', 'auth_subsystem_error').
+        code:
+          type: string
+          description: An optional error code identifying the error type (e.g., 'model_not_found').
+        param:
+          type: string
+          nullable: true
+          description: The parameter that caused the error, if applicable.
+
+    ErrorResponse:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'

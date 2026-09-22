@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 
 	"github.com/leomichalski/aigateway/internal/adapter/adk_runner"
 	"github.com/leomichalski/aigateway/internal/adapter/secrets"
@@ -18,14 +19,14 @@ import (
 var _ = Describe("Chat API Endpoint", func() {
 	var (
 		server *httptest.Server
-		client *ClientWithResponses // O Client gerado pelo OpenAPI
-		chatUC *usecases.ChatUseCase              // Seu UseCase mockado
+		client *ClientWithResponses
+		chatUC *usecases.ChatUseCase
 	)
 
 	BeforeEach(func() {
-		// 1. Configura o servidor do Echo em memória
 		e := echo.New()
-		
+		e.Use(middleware.Recover())
+		// e.Use(middleware.Logger())
 		// Inicialize com Mocks (para testar regras, não a rede real)
 		// mockAdapter := mocks.NewMockAgentRunner()
 		// mockUC = usecases.NewChatUseCase(mockAdapter)
@@ -41,7 +42,6 @@ var _ = Describe("Chat API Endpoint", func() {
 
 		server = httptest.NewServer(e)
 
-		// 2. Cria o Client tipado do OpenAPI apontando pro servidor de teste
 		client, _ = NewClientWithResponses(server.URL)
 	})
 
@@ -49,27 +49,37 @@ var _ = Describe("Chat API Endpoint", func() {
 		server.Close()
 	})
 
-	Context("Quando envio um prompt válido", func() {
-		It("deve retornar 200 OK e a resposta do LLM", func() {
+	Context("When I send a valid prompt", func() {
+		It("must return 200 OK with an OpenAI compatible answer", func() {
 			// ARRANGE
-			session := "sess-123"
-			body := PostApiV1ChatJSONRequestBody{
-				Prompt:    "Qual a capital do Brasil?",
-				SessionId: &session,
+			modelName := "gemini-3.5-flash-lite"
+			body := PostV1ChatCompletionJSONRequestBody{
+				Model: modelName,
+				Messages: []ChatCompletionRequestMessage{
+					{
+						Role:    "user",
+						Content: "Qual a capital do Brasil?",
+					},
+				},
 			}
 
-			// ACT - Chama a API usando o client gerado (Tipagem Forte)
+			// ACT - Call the API using the typed client (based on operationId: PostV1ChatCompletion)
 			ctx := context.Background()
-			resp, err := client.PostApiV1ChatWithResponse(ctx, body)
+			resp, err := client.PostV1ChatCompletionWithResponse(ctx, body)
 
 			// ASSERT (Ginkgo/Gomega)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode()).To(Equal(http.StatusOK))
+			Expect(resp.JSON200).NotTo(BeNil())
+
+			// OpenAI compatibility validation
+			Expect(resp.JSON200.Choices).NotTo(BeEmpty())
+			Expect(resp.JSON200.Choices[0].Message.Content).To(ContainSubstring("Brasília"))
+			Expect(string(resp.JSON200.Choices[0].FinishReason)).To(Equal("stop"))
 			
-			// O .JSON200 já existe no client tipado! Fim do unmarshal manual.
-			Expect(resp.JSON200.Answer).To(ContainSubstring("Brasília"))
-			// Expect(resp.JSON200.Answer).To(ContainSubstring("Simulada"))
-			Expect(*resp.JSON200.Provider).To(Equal("google-adk"))
+			// Metadata
+			Expect(resp.JSON200.Model).To(Equal(modelName))
+			Expect(resp.JSON200.Usage.TotalTokens).To(BeNumerically(">", 0))
 		})
 	})
 })

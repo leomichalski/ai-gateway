@@ -19,7 +19,9 @@ func NewChatUseCase(AgentRunner outbound.AgentRunner, SecretProvider outbound.Se
 	}
 }
 
-func (uc *ChatUseCase) ProcessChat(ctx context.Context, sessionID, prompt string) (*domain.ChatResult, error) {
+// func (uc *ChatUseCase) ProcessChat(ctx context.Context, sessionID, modelName string, prompt string) (*domain.ChatResult, error) {
+func (uc *ChatUseCase) ProcessChat(ctx context.Context, chatRequest domain.ChatRequest) (*domain.ChatResult, error) {
 	// TODO: business rules like checking the semantic cache before calling LLMs
-	return uc.agentRunner.ExecuteTask(ctx, uc.secretProvider, sessionID, prompt)
+	return uc.agentRunner.ExecuteTask(ctx, uc.secretProvider, chatRequest)
+	// return uc.agentRunner.ExecuteTask(ctx, uc.secretProvider, sessionID, modelName, prompt)
 }
