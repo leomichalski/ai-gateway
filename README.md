@@ -14,9 +14,11 @@ REST API combining [LabStack Echo v5](https://github.com/labstack/echo) with cod
    make generate
    ```
 
-1. Spin up the server.
+1. Spin up the server in the debug mode.
    ```bash
    make run
+
+   # Access swagger at http://localhost:8080/docs
    ```
 
 1. Run tests.
