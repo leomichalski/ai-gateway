@@ -51,7 +51,11 @@ var rootCmd = &cobra.Command{
 		strictHandler := httpTransport.NewStrictHandler(apiHandler, nil)
 		httpTransport.RegisterHandlers(e, strictHandler)
 
-		// 1. Create a context that listens for OS interrupt signals.
+		if debug {
+			httpTransport.ConfigureSwagger(e)
+		}
+
+		// Create a context that listens for OS interrupt signals.
 		// When one of these signals occurs, the context is automatically canceled.
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
