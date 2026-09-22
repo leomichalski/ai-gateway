@@ -2,111 +2,150 @@ package adk_runner
 
 import (
 	"context"
+	"errors"
+	"iter"
 	"log/slog"
 	"strings"
 	"time"
-	"iter"
-	"errors"
 
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/adk/v2/model/gemini"
 	"google.golang.org/genai"
 
-	// "google.golang.org/adk/v2/tool"
-	// "google.golang.org/adk/v2/tool/geminitool"
-
 	"github.com/leomichalski/aigateway/internal/domain"
 	"github.com/leomichalski/aigateway/internal/port/outbound"
 )
 
-// Ensure struct implements the interface at compile time
+const (
+	geminiProvider = "gemini"
+	googleProvider = "google-adk"
+	requestTimeout = 30 * time.Second
+)
+
+// Ensure struct implements the interface at compile time.
 var _ outbound.LLMProvider = (*GoogleADKAdapter)(nil)
 
-type GoogleADKAdapter struct {
-	// apiKey string, client *adk.Client, etc.
-}
+type GoogleADKAdapter struct{}
 
 func NewGoogleADKAdapter() outbound.LLMProvider {
-	// adkClient: adk.NewClient(os.Getenv("ADK_API_KEY")),
 	return &GoogleADKAdapter{}
 }
 
-
-// mapError translates provider/context errors into clean Domain errors.
+// mapError translates provider/context errors into domain errors.
 func (a *GoogleADKAdapter) mapError(err error, fallbackErr error) error {
 	if err == nil {
 		return nil
 	}
-	
+
 	switch {
 	case errors.Is(err, context.Canceled):
 		slog.Info("Operation aborted by client (context canceled)")
 		return domain.ErrClientCanceled
+
 	case errors.Is(err, context.DeadlineExceeded):
 		slog.Warn("Operation timed out (deadline exceeded)")
 		return domain.ErrGatewayTimeout
+
 	default:
 		slog.Debug("Provider operation failed", "error", err)
 		return fallbackErr
 	}
 }
 
-// Implementa a porta LLMProvider exigida pelo Gateway
-func (a *GoogleADKAdapter) GenerateCompletion(ctx context.Context, secretProvider outbound.SecretProvider, chatRequest domain.ChatRequest) (*domain.ChatResult, error) {
-	// slog.Debug("Executing ADK task", slog.String("session_id", sessionID))
-	// Enforce timeouts to protect the Gateway (Circuit Breaker baseline)
+// prepareRequest performs all provider-independent request preparation:
+// timeout, API key retrieval, model initialization, and request construction.
+func (a *GoogleADKAdapter) prepareRequest(
+	ctx context.Context,
+	secretProvider outbound.SecretProvider,
+	chatRequest domain.ChatRequest,
+) (context.Context, context.CancelFunc, model.LLM, *model.LLMRequest, error) {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 
-	// TODO: parameterize timeout
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	key, err := secretProvider.GetProviderKey(ctx, "gemini")
+	key, err := secretProvider.GetProviderKey(ctx, geminiProvider)
 	if err != nil {
-		return nil, a.mapError(err, domain.ErrInternalSecret)
+		cancel()
+		return nil, nil, nil, nil, a.mapError(err, domain.ErrInternalSecret)
 	}
 
 	llmModel, err := gemini.NewModel(ctx, chatRequest.Model, &genai.ClientConfig{
 		APIKey: key,
 	})
 	if err != nil {
-		return nil, a.mapError(err, domain.ErrModelInitialization)
+		cancel()
+		return nil, nil, nil, nil, a.mapError(err, domain.ErrModelInitialization)
 	}
 
-	var contents []*genai.Content
-	for _, msg := range chatRequest.Messages {
-		var role genai.Role
-		switch msg.Role {
-		// case "system":
-		// 	role = genai.RoleSystem
-		case "user":
-			role = genai.RoleUser
-		case "assistant":
-			role = genai.RoleModel // Gemini uses 'model' for the assistant role
-		default:
-			role = genai.RoleUser
-		}
-		contents = append(contents, genai.NewContentFromText(msg.Content, role))
-	}
+	llmReq := buildLLMRequest(chatRequest)
 
-	var genConfig *genai.GenerateContentConfig
-	if chatRequest.Temperature != nil {
-		genConfig = &genai.GenerateContentConfig{
-			Temperature: chatRequest.Temperature,
-		}
-	}
-	// Direct Stateless Generation
-	llmReq := &model.LLMRequest{
+	return ctx, cancel, llmModel, llmReq, nil
+}
+
+func buildLLMRequest(chatRequest domain.ChatRequest) *model.LLMRequest {
+	return &model.LLMRequest{
 		Model:    chatRequest.Model,
-		Contents: contents,
-		Config:   genConfig,
-		// Tools:
+		Contents: buildContents(chatRequest.Messages),
+		Config:   buildGenerateConfig(chatRequest),
+	}
+}
+
+func buildContents(messages []domain.Message) []*genai.Content {
+	contents := make([]*genai.Content, 0, len(messages))
+
+	for _, msg := range messages {
+		role := mapRole(msg.Role)
+		contents = append(
+			contents,
+			genai.NewContentFromText(msg.Content, role),
+		)
 	}
 
-	var lastResp *model.LLMResponse = nil
-	for resp, err := range llmModel.GenerateContent(ctx, llmReq, false) {  // stream = false
+	return contents
+}
+
+func mapRole(role string) genai.Role {
+	switch role {
+	// case "system":
+	// 	fallback to genai.RoleUser, there's no genai.RoleSystem
+	case "assistant":
+		return genai.RoleModel
+	case "user":
+		return genai.RoleUser
+	default:
+		return genai.RoleUser
+	}
+}
+
+func buildGenerateConfig(chatRequest domain.ChatRequest) *genai.GenerateContentConfig {
+	if chatRequest.Temperature == nil {
+		return nil
+	}
+	return &genai.GenerateContentConfig{
+		Temperature: chatRequest.Temperature,
+	}
+}
+
+func (a *GoogleADKAdapter) GenerateCompletion(
+	ctx context.Context,
+	secretProvider outbound.SecretProvider,
+	chatRequest domain.ChatRequest,
+) (*domain.ChatResult, error) {
+	ctx, cancel, llmModel, llmReq, err := a.prepareRequest(
+		ctx,
+		secretProvider,
+		chatRequest,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+
+	var lastResp *model.LLMResponse
+
+	for resp, err := range llmModel.GenerateContent(ctx, llmReq, false) {
 		if err != nil {
 			return nil, a.mapError(err, domain.ErrProviderFailure)
 		}
+
 		lastResp = resp
 	}
 
@@ -114,131 +153,63 @@ func (a *GoogleADKAdapter) GenerateCompletion(ctx context.Context, secretProvide
 		return nil, domain.ErrEmptyProviderResponse
 	}
 
-	// Extract the response text
-	var responseBuilder strings.Builder
-	for _, part := range lastResp.Content.Parts {
-		if part.Text != "" {
-			responseBuilder.WriteString(part.Text)
-		}
-	}
+	return buildChatResult(lastResp), nil
+}
 
-	// Extract Usage metadata
+func buildChatResult(resp *model.LLMResponse) *domain.ChatResult {
 	var (
-		promptTokens int32
-		compTokens   int32
-		totalTokens  int32
+		answer        strings.Builder
+		promptTokens  int32
+		compTokens    int32
+		totalTokens   int32
 	)
-	if lastResp.UsageMetadata != nil {
-		promptTokens = lastResp.UsageMetadata.PromptTokenCount
-		compTokens = lastResp.UsageMetadata.CandidatesTokenCount
-		totalTokens = lastResp.UsageMetadata.TotalTokenCount
+
+	for _, part := range resp.Content.Parts {
+		if part.Text != "" {
+			answer.WriteString(part.Text)
+		}
 	}
 
-	// Determine Finish Reason based on ADK's last response flag
-	finishReason := "stop"
-	if lastResp.FinishReason != "" {
-		finishReason = strings.ToLower(string(lastResp.FinishReason))
+	if resp.UsageMetadata != nil {
+		promptTokens = resp.UsageMetadata.PromptTokenCount
+		compTokens = resp.UsageMetadata.CandidatesTokenCount
+		totalTokens = resp.UsageMetadata.TotalTokenCount
 	}
+
 	return &domain.ChatResult{
-		Answer:           responseBuilder.String(),
-		PromptTokens:     promptTokens,
+		Answer:          answer.String(),
+		PromptTokens:    promptTokens,
 		CompletionTokens: compTokens,
-		TotalTokens:      totalTokens,
-		Provider:         "google-adk",
-		FinishReason:     finishReason,
-	}, nil
-}
-
-// Helper to normalize ADK finish reasons to OpenAI compatible finish reasons
-func mapFinishReason(reason string) string {
-	if reason == "" {
-		return ""
-	}
-	switch strings.ToUpper(reason) {
-	case "MAX_TOKENS", "LENGTH":
-		return "length"
-	case "SAFETY", "RECITATION", "BLOCKLIST":
-		return "content_filter"
-	default:
-		return "stop"
+		TotalTokens:     totalTokens,
+		Provider:        googleProvider,
+		FinishReason:    mapFinishReason(string(resp.FinishReason)),
 	}
 }
 
-func (a *GoogleADKAdapter) StreamCompletion(ctx context.Context, secretProvider outbound.SecretProvider, chatRequest domain.ChatRequest) (iter.Seq2[*domain.ChatChunk, error], error) {
-	// slog.Debug("Executing ADK task", slog.String("session_id", sessionID))
-	// Enforce timeouts to protect the Gateway (Circuit Breaker baseline)
-
-	// TODO: parameterize timeout
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	// defer cancel()
-
-	key, err := secretProvider.GetProviderKey(ctx, "gemini")
+func (a *GoogleADKAdapter) StreamCompletion(
+	ctx context.Context,
+	secretProvider outbound.SecretProvider,
+	chatRequest domain.ChatRequest,
+) (iter.Seq2[*domain.ChatChunk, error], error) {
+	ctx, cancel, llmModel, llmReq, err := a.prepareRequest(
+		ctx,
+		secretProvider,
+		chatRequest,
+	)
 	if err != nil {
-		cancel()
-		return nil, a.mapError(err, domain.ErrInternalSecret)
+		return nil, err
 	}
 
-	llmModel, err := gemini.NewModel(ctx, chatRequest.Model, &genai.ClientConfig{
-		APIKey: key,
-	})
-	if err != nil {
-		return nil, a.mapError(err, domain.ErrModelInitialization)
-	}
-
-	var contents []*genai.Content
-	for _, msg := range chatRequest.Messages {
-		var role genai.Role
-		switch msg.Role {
-		// case "system":
-		// 	role = genai.RoleSystem
-		case "user":
-			role = genai.RoleUser
-		case "assistant":
-			role = genai.RoleModel // Gemini uses 'model' for the assistant role
-		default:
-			role = genai.RoleUser
-		}
-		contents = append(contents, genai.NewContentFromText(msg.Content, role))
-	}
-
-	var genConfig *genai.GenerateContentConfig
-	if chatRequest.Temperature != nil {
-		genConfig = &genai.GenerateContentConfig{
-			Temperature: chatRequest.Temperature,
-		}
-	}
-	// Direct Stateless Generation
-	llmReq := &model.LLMRequest{
-		Model:    chatRequest.Model,
-		Contents: contents,
-		Config:   genConfig,
-		// Tools:
-	}
-
-	// var lastResp *model.LLMResponse = nil
 	seq := func(yield func(*domain.ChatChunk, error) bool) {
 		defer cancel()
-		
-		for resp, err := range llmModel.GenerateContent(ctx, llmReq, true) { // stream = true
+
+		for resp, err := range llmModel.GenerateContent(ctx, llmReq, true) {
 			if err != nil {
 				yield(nil, a.mapError(err, domain.ErrProviderFailure))
 				return
 			}
 
-			var textDelta string
-			if resp.Content != nil {
-				for _, part := range resp.Content.Parts {
-					textDelta += part.Text
-				}
-			}
-
-			chunk := &domain.ChatChunk{
-				ContentDelta: textDelta,
-			}
-			
-			if resp.FinishReason != "" {
-				chunk.FinishReason = mapFinishReason(string(resp.FinishReason))
-			}
+			chunk := buildChatChunk(resp)
 
 			if !yield(chunk, nil) {
 				return
@@ -247,4 +218,43 @@ func (a *GoogleADKAdapter) StreamCompletion(ctx context.Context, secretProvider 
 	}
 
 	return seq, nil
+}
+
+func buildChatChunk(resp *model.LLMResponse) *domain.ChatChunk {
+	var content strings.Builder
+
+	if resp.Content != nil {
+		for _, part := range resp.Content.Parts {
+			content.WriteString(part.Text)
+		}
+	}
+
+	chunk := &domain.ChatChunk{
+		ContentDelta: content.String(),
+	}
+
+	if resp.FinishReason != "" {
+		chunk.FinishReason = mapFinishReason(string(resp.FinishReason))
+	}
+
+	return chunk
+}
+
+// mapFinishReason normalizes ADK/Gemini finish reasons to
+// OpenAI-compatible finish reasons.
+func mapFinishReason(reason string) string {
+	if reason == "" {
+		return ""
+	}
+
+	switch strings.ToUpper(reason) {
+	case "MAX_TOKENS", "LENGTH":
+		return "length"
+
+	case "SAFETY", "RECITATION", "BLOCKLIST":
+		return "content_filter"
+
+	default:
+		return "stop"
+	}
 }
