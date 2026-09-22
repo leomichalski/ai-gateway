@@ -2,6 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"iter"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,7 +22,6 @@ func (s *APIHandler) PostV1ChatCompletion(ctx context.Context, req PostV1ChatCom
 	// 	session = *req.Body.SessionId
 	// }
 	// result, err := s.chatUseCase.ProcessChat(ctx, session, req.Body.Model, req.Body.Prompt)
-
 
 	// Map DTO to Domain Entity
 	var messages []domain.Message
@@ -40,6 +44,21 @@ func (s *APIHandler) PostV1ChatCompletion(ctx context.Context, req PostV1ChatCom
 		Stream:      stream,
 	}
 
+	if domainReq.Stream {
+		streamSeq, err := s.chatUseCase.ProcessChatStream(ctx, domainReq)
+		if err != nil {
+			return PostV1ChatCompletion500JSONResponse{
+				Error: ErrorObject{Message: err.Error(), Type: "internal_server_error"},
+			}, nil
+		}
+
+		// 3. Return our custom response struct cleanly
+		return ChatCompletionSSEResponse{
+			StreamSeq: streamSeq,
+			Model:     req.Body.Model,
+		}, nil
+	}
+
 	// Execute Use Case
 	result, err := s.chatUseCase.ProcessChat(ctx, domainReq)
 	if err != nil {
@@ -51,7 +70,6 @@ func (s *APIHandler) PostV1ChatCompletion(ctx context.Context, req PostV1ChatCom
 			},
 		}, nil
 	}
-
 
 	// Map Domain Result to OpenAI DTO Response
 	// Generate a unique ID and Timestamp for the response
@@ -79,4 +97,73 @@ func (s *APIHandler) PostV1ChatCompletion(ctx context.Context, req PostV1ChatCom
 			TotalTokens:      result.TotalTokens,
 		},
 	}, nil
+}
+
+type ChatCompletionSSEResponse struct {
+	StreamSeq iter.Seq2[*domain.ChatChunk, error]
+	Model     string
+}
+
+// Implement the oapi-codegen ResponseObject interface
+func (r ChatCompletionSSEResponse) VisitPostV1ChatCompletionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	// Type assert the ResponseWriter to http.Flusher
+	flusher, _ := w.(http.Flusher)
+
+	chatID := "chatcmpl-" + uuid.New().String()
+	created := time.Now().Unix()
+
+	for chunk, err := range r.StreamSeq {
+		if err != nil {
+			slog.Debug("Failed while streaming chat completion response.", "error", err)
+			
+			// Send the error as a JSON event to the client
+			errorPayload := map[string]any{
+				"error": map[string]any{"message": err.Error(), "type": "provider_stream_error"},
+			}
+			errData, _ := json.Marshal(errorPayload)
+			fmt.Fprintf(w, "data: %s\n\n", string(errData))
+			if flusher != nil { flusher.Flush() }
+			// Optional: Write an SSE error chunk here
+			break
+		}
+
+		var finishReason any = nil
+		if chunk.FinishReason != "" {
+			finishReason = chunk.FinishReason
+		}
+
+		openaiChunk := map[string]any{
+			"id":      chatID,
+			"object":  "chat.completion.chunk",
+			"created": created,
+			"model":   r.Model,
+			"choices": []map[string]any{
+				{
+					"index": 0,
+					"delta": map[string]any{
+						"content": chunk.ContentDelta,
+					},
+					"finish_reason": finishReason,
+				},
+			},
+		}
+
+		data, _ := json.Marshal(openaiChunk)
+		fmt.Fprintf(w, "data: %s\n\n", string(data))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	if flusher != nil {
+		flusher.Flush()
+	}
+
+	return nil
 }

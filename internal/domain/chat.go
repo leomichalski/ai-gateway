@@ -20,3 +20,12 @@ type ChatResult struct {
 	Provider         string
 	FinishReason     string
 }
+
+type ChatChunk struct {
+	ContentDelta     string
+	// PromptTokens     int32
+	// CompletionTokens int32
+	// TotalTokens      int32
+	// Provider         string
+	FinishReason     string
+}
