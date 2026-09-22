@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/leomichalski/aigateway/internal/adapter/adk_runner"
+	"github.com/leomichalski/aigateway/internal/adapter/secrets"
 	"github.com/leomichalski/aigateway/internal/usecases"
 )
 
@@ -31,7 +32,8 @@ var _ = Describe("Chat API Endpoint", func() {
 		// apiHandler := NewAPIHandler(mockUC)
 
 		llmAdapter := adk_runner.NewGoogleADKAdapter()
-		chatUC = usecases.NewChatUseCase(llmAdapter)
+		envSecretProvider := secrets.NewEnvSecretProvider()
+		chatUC = usecases.NewChatUseCase(llmAdapter, envSecretProvider)
 		apiHandler := NewAPIHandler(chatUC) 
 		
 		strictHandler := NewStrictHandler(apiHandler, nil)

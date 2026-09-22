@@ -3,7 +3,6 @@ package adk_runner
 import (
 	"context"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -34,7 +33,7 @@ func NewGoogleADKAdapter() outbound.AgentRunner {
 }
 
 // Implementa a porta AgentRunner exigida pelo Gateway
-func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, sessionID string, prompt string) (*domain.ChatResult, error) {
+func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, secretProvider outbound.SecretProvider, sessionID string, prompt string) (*domain.ChatResult, error) {
 	slog.Debug("Executing ADK task", slog.String("session_id", sessionID))
 	// Enforce timeouts to protect the Gateway (Circuit Breaker baseline)
 
@@ -42,9 +41,15 @@ func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, sessionID string, pr
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
+	key, err := secretProvider.GetProviderKey(ctx, "gemini")
+	if err != nil {
+		// slog.Error("%s", err)
+		return nil, err
+	}
+
 	// TODO: refactor when there is model storage
 	model, err := gemini.NewModel(ctx, "gemini-2.5-flash", &genai.ClientConfig{
-		APIKey: os.Getenv("GOOGLE_API_KEY"),
+		APIKey: key,
 	})
 	if err != nil {
 		slog.Error("Failed to create model: %v", err)

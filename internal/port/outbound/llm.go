@@ -7,5 +7,5 @@ import (
 )
 
 type AgentRunner interface {
-	ExecuteTask(ctx context.Context, sessionID string, prompt string) (*domain.ChatResult, error)
+	ExecuteTask(ctx context.Context, secretProvider SecretProvider, sessionID string, prompt string) (*domain.ChatResult, error)
 }

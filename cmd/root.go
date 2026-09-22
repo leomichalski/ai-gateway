@@ -15,6 +15,7 @@ import (
 
 	httpTransport "github.com/leomichalski/aigateway/internal/transport/http"
 	"github.com/leomichalski/aigateway/internal/adapter/adk_runner"
+	"github.com/leomichalski/aigateway/internal/adapter/secrets"
 	"github.com/leomichalski/aigateway/internal/usecases"
 
 	"github.com/spf13/cobra"
@@ -44,7 +45,8 @@ var rootCmd = &cobra.Command{
 		e.Use(middleware.Recover())
 
 		llmAdapter := adk_runner.NewGoogleADKAdapter()
-		chatUC := usecases.NewChatUseCase(llmAdapter)
+		envSecretProvider := secrets.NewEnvSecretProvider()
+		chatUC := usecases.NewChatUseCase(llmAdapter, envSecretProvider)
 
 		// Handlers and route registration
 		apiHandler := httpTransport.NewAPIHandler(chatUC)
