@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
-  title: Surveil API
-  description: Surveillance ingestion and search service.
+  title: aigateway
+  description: AI Gateway.
   version: 0.1.0
 
 paths:

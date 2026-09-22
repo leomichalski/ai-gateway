@@ -9,8 +9,8 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/labstack/echo/v5"
 
-	"github.com/leomichalski/surveil-api/internal/adapter/adk_runner"
-	"github.com/leomichalski/surveil-api/internal/usecases"
+	"github.com/leomichalski/aigateway/internal/adapter/adk_runner"
+	"github.com/leomichalski/aigateway/internal/usecases"
 )
 
 

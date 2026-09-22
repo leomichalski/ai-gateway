@@ -3,7 +3,7 @@ package outbound
 import (
 	"context"
 
-	"github.com/leomichalski/surveil-api/internal/domain"
+	"github.com/leomichalski/aigateway/internal/domain"
 )
 
 type AgentRunner interface {

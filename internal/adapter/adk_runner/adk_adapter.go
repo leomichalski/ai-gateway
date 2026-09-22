@@ -17,8 +17,8 @@ import (
 	// "google.golang.org/adk/v2/tool"
 	// "google.golang.org/adk/v2/tool/geminitool"
 
-	"github.com/leomichalski/surveil-api/internal/domain"
-	"github.com/leomichalski/surveil-api/internal/port/outbound"
+	"github.com/leomichalski/aigateway/internal/domain"
+	"github.com/leomichalski/aigateway/internal/port/outbound"
 )
 
 // Ensure struct implements the interface at compile time
@@ -64,7 +64,7 @@ func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, sessionID string, pr
 	}
 
 	// Create an in-memory session service and instantiate a session
-	appName := "surveil-api"
+	appName := "aigateway"
 	// TODO: refactor when there are users
 	userID := "user-123"
 

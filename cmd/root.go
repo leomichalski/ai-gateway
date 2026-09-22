@@ -13,9 +13,9 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 
-	httpTransport "github.com/leomichalski/surveil-api/internal/transport/http"
-	"github.com/leomichalski/surveil-api/internal/adapter/adk_runner"
-	"github.com/leomichalski/surveil-api/internal/usecases"
+	httpTransport "github.com/leomichalski/aigateway/internal/transport/http"
+	"github.com/leomichalski/aigateway/internal/adapter/adk_runner"
+	"github.com/leomichalski/aigateway/internal/usecases"
 
 	"github.com/spf13/cobra"
 )
@@ -26,9 +26,9 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "surveil-api",
-	Short: "Surveillance ingestion and search service.",
-	Long:  `Surveillance ingestion and search service1.`,
+	Use:   "aigateway",
+	Short: "AI Gateway.",
+	Long:  `AI Gateway.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Configure slog (Echo v5 default logging standard)
 		loggerHandlerOptions := &slog.HandlerOptions{}

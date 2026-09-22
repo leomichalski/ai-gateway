@@ -1,4 +1,4 @@
-# surveil-api
+# AI Gateway
 
 REST API combining [LabStack Echo v5](https://github.com/labstack/echo) with code generation from OpenAPI 3 specifications using [`oapi-codegen`](https://github.com/oapi-codegen/oapi-codegen).
 

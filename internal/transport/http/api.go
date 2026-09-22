@@ -1,7 +1,7 @@
 package http
 
 import (
-	"github.com/leomichalski/surveil-api/internal/usecases"
+	"github.com/leomichalski/aigateway/internal/usecases"
 )
 
 type APIHandler struct {

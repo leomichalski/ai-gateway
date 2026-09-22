@@ -3,8 +3,8 @@ package usecases
 import (
 	"context"
 
-	"github.com/leomichalski/surveil-api/internal/domain"
-	"github.com/leomichalski/surveil-api/internal/port/outbound"
+	"github.com/leomichalski/aigateway/internal/domain"
+	"github.com/leomichalski/aigateway/internal/port/outbound"
 )
 
 type ChatUseCase struct {

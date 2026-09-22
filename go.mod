@@ -1,4 +1,4 @@
-module github.com/leomichalski/surveil-api
+module github.com/leomichalski/aigateway
 
 go 1.26.8
 
