@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"iter"
+	"errors"
 
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/adk/v2/model/gemini"
@@ -30,6 +31,26 @@ func NewGoogleADKAdapter() outbound.LLMProvider {
 	return &GoogleADKAdapter{}
 }
 
+
+// mapError translates provider/context errors into clean Domain errors.
+func (a *GoogleADKAdapter) mapError(err error, fallbackErr error) error {
+	if err == nil {
+		return nil
+	}
+	
+	switch {
+	case errors.Is(err, context.Canceled):
+		slog.Info("Operation aborted by client (context canceled)")
+		return domain.ErrClientCanceled
+	case errors.Is(err, context.DeadlineExceeded):
+		slog.Warn("Operation timed out (deadline exceeded)")
+		return domain.ErrGatewayTimeout
+	default:
+		slog.Debug("Provider operation failed", "error", err)
+		return fallbackErr
+	}
+}
+
 // Implementa a porta LLMProvider exigida pelo Gateway
 func (a *GoogleADKAdapter) GenerateCompletion(ctx context.Context, secretProvider outbound.SecretProvider, chatRequest domain.ChatRequest) (*domain.ChatResult, error) {
 	// slog.Debug("Executing ADK task", slog.String("session_id", sessionID))
@@ -41,16 +62,14 @@ func (a *GoogleADKAdapter) GenerateCompletion(ctx context.Context, secretProvide
 
 	key, err := secretProvider.GetProviderKey(ctx, "gemini")
 	if err != nil {
-		slog.Error("Failed to get provider key.", "Error:", err)
-		return nil, err
+		return nil, a.mapError(err, domain.ErrInternalSecret)
 	}
 
 	llmModel, err := gemini.NewModel(ctx, chatRequest.Model, &genai.ClientConfig{
 		APIKey: key,
 	})
 	if err != nil {
-		slog.Error("Failed to create model.", "Error:", err)
-		return nil, err
+		return nil, a.mapError(err, domain.ErrModelInitialization)
 	}
 
 	var contents []*genai.Content
@@ -86,18 +105,20 @@ func (a *GoogleADKAdapter) GenerateCompletion(ctx context.Context, secretProvide
 	var lastResp *model.LLMResponse = nil
 	for resp, err := range llmModel.GenerateContent(ctx, llmReq, false) {  // stream = false
 		if err != nil {
-			return nil, err
+			return nil, a.mapError(err, domain.ErrProviderFailure)
 		}
 		lastResp = resp
 	}
 
+	if lastResp == nil || lastResp.Content == nil {
+		return nil, domain.ErrEmptyProviderResponse
+	}
+
 	// Extract the response text
 	var responseBuilder strings.Builder
-	if lastResp != nil && lastResp.Content != nil {
-		for _, part := range lastResp.Content.Parts {
-			if part.Text != "" {
-				responseBuilder.WriteString(part.Text)
-			}
+	for _, part := range lastResp.Content.Parts {
+		if part.Text != "" {
+			responseBuilder.WriteString(part.Text)
 		}
 	}
 
@@ -154,16 +175,14 @@ func (a *GoogleADKAdapter) StreamCompletion(ctx context.Context, secretProvider 
 	key, err := secretProvider.GetProviderKey(ctx, "gemini")
 	if err != nil {
 		cancel()
-		slog.Error("Failed to get provider key.", "Error:", err)
-		return nil, err
+		return nil, a.mapError(err, domain.ErrInternalSecret)
 	}
 
 	llmModel, err := gemini.NewModel(ctx, chatRequest.Model, &genai.ClientConfig{
 		APIKey: key,
 	})
 	if err != nil {
-		slog.Error("Failed to create model.", "Error:", err)
-		return nil, err
+		return nil, a.mapError(err, domain.ErrModelInitialization)
 	}
 
 	var contents []*genai.Content
@@ -202,7 +221,7 @@ func (a *GoogleADKAdapter) StreamCompletion(ctx context.Context, secretProvider 
 		
 		for resp, err := range llmModel.GenerateContent(ctx, llmReq, true) { // stream = true
 			if err != nil {
-				yield(nil, err)
+				yield(nil, a.mapError(err, domain.ErrProviderFailure))
 				return
 			}
 
