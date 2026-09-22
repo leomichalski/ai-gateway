@@ -31,6 +31,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
 
+  /api/v1/chat:
+    post:
+      summary: Executes a prompt using a LLM/Agent
+      operationId: PostApiV1Chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Success response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     HealthState:
@@ -41,7 +65,6 @@ components:
         # - degraded
         - down
       example: ok
-
     HealthResponse:
       type: object
       required:
@@ -49,3 +72,30 @@ components:
       properties:
         status:
           $ref: '#/components/schemas/HealthState'
+
+    ChatRequest:
+      type: object
+      required:
+        - prompt
+      properties:
+        prompt:
+          type: string
+        session_id:
+          type: string
+    ChatResponse:
+      type: object
+      required:
+        - answer
+      properties:
+        answer:
+          type: string
+        tokens_used:
+          type: integer
+          format: int32
+        provider:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string

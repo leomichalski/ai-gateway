@@ -14,39 +14,49 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 
 	httpTransport "github.com/leomichalski/surveil-api/internal/transport/http"
+	"github.com/leomichalski/surveil-api/internal/adapter/adk_runner"
+	"github.com/leomichalski/surveil-api/internal/usecases"
 
 	"github.com/spf13/cobra"
 )
 
 var (
 	serverPort string
+	debug bool
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "surveil-api",
 	Short: "Surveillance ingestion and search service.",
-	Long: `Surveillance ingestion and search service1.`,
+	Long:  `Surveillance ingestion and search service1.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Configure slog (Echo v5 default logging standard)
-		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		loggerHandlerOptions := &slog.HandlerOptions{}
+		if debug {
+			loggerHandlerOptions.Level = slog.LevelDebug
+		}
+		logger := slog.New(slog.NewJSONHandler(os.Stdout, loggerHandlerOptions))
 		slog.SetDefault(logger)
 
 		e := echo.New()
 
-		// Built-in middlewares
 		e.Use(middleware.RequestLogger())
 		e.Use(middleware.Recover())
 
+		llmAdapter := adk_runner.NewGoogleADKAdapter()
+		chatUC := usecases.NewChatUseCase(llmAdapter)
+
 		// Handlers and route registration
-		server := httpTransport.NewServer()
-		httpTransport.RegisterHandlers(e, server)
+		apiHandler := httpTransport.NewAPIHandler(chatUC)
+		strictHandler := httpTransport.NewStrictHandler(apiHandler, nil)
+		httpTransport.RegisterHandlers(e, strictHandler)
 
 		// 1. Create a context that listens for OS interrupt signals.
 		// When one of these signals occurs, the context is automatically canceled.
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		// 2. Define the server configuration using Echo v5's StartConfig.
+		// Define the server configuration using Echo v5's StartConfig.
 		// GracefulTimeout configures how long to wait for active requests to finish.
 		sc := echo.StartConfig{
 			Address:         ":" + serverPort,
@@ -55,7 +65,7 @@ var rootCmd = &cobra.Command{
 
 		slog.Info("server starting on " + sc.Address)
 
-		// 3. Start the server synchronously.
+		// Start the server synchronously.
 		// This blocks natively and handles the entire graceful shutdown flow
 		// internally when the signal context (ctx) is canceled.
 		if err := sc.Start(ctx, e); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -89,4 +99,5 @@ func init() {
 	// rootCmd.Flags().BoolVar(&aA, "a-a", true, "Description.")
 	// rootCmd.Flags().DurationVar(&aA, "a-a", 30*time.Minute, "Description.")
 	rootCmd.Flags().StringVar(&serverPort, "server-port", "8080", "Server port.")
+	rootCmd.Flags().BoolVar(&debug, "debug", true, "Debug mode.")
 }

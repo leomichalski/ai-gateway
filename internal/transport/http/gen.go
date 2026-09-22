@@ -6,8 +6,12 @@ package http
 import (
 	"bytes"
 	"compress/flate"
+	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"path"
 	"strings"
@@ -34,6 +38,24 @@ func (e HealthState) Valid() bool {
 	}
 }
 
+// ChatRequest defines model for ChatRequest.
+type ChatRequest struct {
+	Prompt    string  `json:"prompt"`
+	SessionId *string `json:"session_id,omitempty"`
+}
+
+// ChatResponse defines model for ChatResponse.
+type ChatResponse struct {
+	Answer     string  `json:"answer"`
+	Provider   *string `json:"provider,omitempty"`
+	TokensUsed *int32  `json:"tokens_used,omitempty"`
+}
+
+// ErrorResponse defines model for ErrorResponse.
+type ErrorResponse struct {
+	Message *string `json:"message,omitempty"`
+}
+
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
 	// Status Overall operational state of the service or subsystem.
@@ -47,8 +69,627 @@ type HealthResponse struct {
 // Example: ok
 type HealthState string
 
+// PostApiV1ChatJSONRequestBody defines body for PostApiV1Chat for application/json ContentType.
+type PostApiV1ChatJSONRequestBody = ChatRequest
+
+// RequestEditorFn is the function signature for the RequestEditor callback function
+type RequestEditorFn func(ctx context.Context, req *http.Request) error
+
+// Doer performs HTTP requests.
+//
+// The standard http.Client implements this interface.
+type HttpRequestDoer interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// Client which conforms to the OpenAPI3 specification for this service.
+type Client struct {
+	// The endpoint of the server conforming to this interface, with scheme,
+	// https://api.deepmap.com for example. This can contain a path relative
+	// to the server, such as https://api.deepmap.com/dev-test, and all the
+	// paths in the swagger spec will be appended to the server.
+	Server string
+
+	// Doer for performing requests, typically a *http.Client with any
+	// customized settings, such as certificate chains.
+	Client HttpRequestDoer
+
+	// A list of callbacks for modifying requests which are generated before sending over
+	// the network.
+	RequestEditors []RequestEditorFn
+}
+
+// ClientOption allows setting custom parameters during construction
+type ClientOption func(*Client) error
+
+// Creates a new Client, with reasonable defaults
+func NewClient(server string, opts ...ClientOption) (*Client, error) {
+	// create a client with sane default values
+	client := Client{
+		Server: server,
+	}
+	// mutate client and add all optional params
+	for _, o := range opts {
+		if err := o(&client); err != nil {
+			return nil, err
+		}
+	}
+	// ensure the server URL always has a trailing slash
+	if !strings.HasSuffix(client.Server, "/") {
+		client.Server += "/"
+	}
+	// create httpClient, if not already present
+	if client.Client == nil {
+		client.Client = &http.Client{}
+	}
+	return &client, nil
+}
+
+// WithHTTPClient allows overriding the default Doer, which is
+// automatically created using http.Client. This is useful for tests.
+func WithHTTPClient(doer HttpRequestDoer) ClientOption {
+	return func(c *Client) error {
+		c.Client = doer
+		return nil
+	}
+}
+
+// WithRequestEditorFn allows setting up a callback function, which will be
+// called right before sending the request. This can be used to mutate the request.
+func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
+	return func(c *Client) error {
+		c.RequestEditors = append(c.RequestEditors, fn)
+		return nil
+	}
+}
+
+// The interface specification for the client above.
+type ClientInterface interface {
+
+	// PostApiV1ChatWithBody Executes a prompt using a LLM/Agent
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
+	PostApiV1ChatWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiV1Chat Executes a prompt using a LLM/Agent
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
+	PostApiV1Chat(ctx context.Context, body PostApiV1ChatJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetHealthz Service Health Check
+	//
+	// Returns the operational status of the service and its critical dependencies.
+	//
+	// Corresponds with GET /healthz (the `GetHealthz` operationId).
+	GetHealthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// HeadHealthz Service Health Check
+	//
+	// Returns the operational status of the service and its critical dependencies.
+	//
+	// Corresponds with HEAD /healthz (the `HeadHealthz` operationId).
+	HeadHealthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// PostApiV1ChatWithBody Executes a prompt using a LLM/Agent
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
+func (c *Client) PostApiV1ChatWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiV1ChatRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiV1Chat Executes a prompt using a LLM/Agent
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
+func (c *Client) PostApiV1Chat(ctx context.Context, body PostApiV1ChatJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiV1ChatRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetHealthz Service Health Check
+//
+// Returns the operational status of the service and its critical dependencies.
+//
+// Corresponds with GET /healthz (the `GetHealthz` operationId).
+func (c *Client) GetHealthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetHealthzRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// HeadHealthz Service Health Check
+//
+// Returns the operational status of the service and its critical dependencies.
+//
+// Corresponds with HEAD /healthz (the `HeadHealthz` operationId).
+func (c *Client) HeadHealthz(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewHeadHealthzRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// NewPostApiV1ChatRequest calls the generic PostApiV1Chat builder with application/json body
+func NewPostApiV1ChatRequest(server string, body PostApiV1ChatJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiV1ChatRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostApiV1ChatRequestWithBody constructs an http.Request for the PostApiV1Chat method, with any body, and a specified content type
+func NewPostApiV1ChatRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/chat")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetHealthzRequest constructs an http.Request for the GetHealthz method
+func NewGetHealthzRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/healthz")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewHeadHealthzRequest constructs an http.Request for the HeadHealthz method
+func NewHeadHealthzRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/healthz")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodHead, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
+	for _, r := range c.RequestEditors {
+		if err := r(ctx, req); err != nil {
+			return err
+		}
+	}
+	for _, r := range additionalEditors {
+		if err := r(ctx, req); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ClientWithResponses builds on ClientInterface to offer response payloads
+type ClientWithResponses struct {
+	ClientInterface
+}
+
+// NewClientWithResponses creates a new ClientWithResponses, which wraps
+// Client with return type handling
+func NewClientWithResponses(server string, opts ...ClientOption) (*ClientWithResponses, error) {
+	client, err := NewClient(server, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &ClientWithResponses{client}, nil
+}
+
+// WithBaseURL overrides the baseURL.
+func WithBaseURL(baseURL string) ClientOption {
+	return func(c *Client) error {
+		newBaseURL, err := url.Parse(baseURL)
+		if err != nil {
+			return err
+		}
+		c.Server = newBaseURL.String()
+		return nil
+	}
+}
+
+// ClientWithResponsesInterface is the interface specification for the client with responses above.
+type ClientWithResponsesInterface interface {
+
+	// PostApiV1ChatWithBodyWithResponse Executes a prompt using a LLM/Agent
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
+	PostApiV1ChatWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiV1ChatResponse, error)
+
+	// PostApiV1ChatWithResponse Executes a prompt using a LLM/Agent
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
+	PostApiV1ChatWithResponse(ctx context.Context, body PostApiV1ChatJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiV1ChatResponse, error)
+
+	// GetHealthzWithResponse Service Health Check
+	//
+	// Returns the operational status of the service and its critical dependencies.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /healthz (the `GetHealthz` operationId).
+	GetHealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthzResponse, error)
+
+	// HeadHealthzWithResponse Service Health Check
+	//
+	// Returns the operational status of the service and its critical dependencies.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with HEAD /healthz (the `HeadHealthz` operationId).
+	HeadHealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HeadHealthzResponse, error)
+}
+
+type PostApiV1ChatResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ChatResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *ErrorResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiV1ChatResponse) GetJSON200() *ChatResponse {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PostApiV1ChatResponse) GetJSON500() *ErrorResponse {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiV1ChatResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiV1ChatResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiV1ChatResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiV1ChatResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetHealthzResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HealthResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetHealthzResponse) GetJSON200() *HealthResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetHealthzResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetHealthzResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetHealthzResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetHealthzResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type HeadHealthzResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *HealthResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r HeadHealthzResponse) GetJSON200() *HealthResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r HeadHealthzResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r HeadHealthzResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r HeadHealthzResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r HeadHealthzResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PostApiV1ChatWithBodyWithResponse Executes a prompt using a LLM/Agent
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
+func (c *ClientWithResponses) PostApiV1ChatWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiV1ChatResponse, error) {
+	rsp, err := c.PostApiV1ChatWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiV1ChatResponse(rsp)
+}
+
+// PostApiV1ChatWithResponse Executes a prompt using a LLM/Agent
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/chat (the `PostApiV1Chat` operationId).
+func (c *ClientWithResponses) PostApiV1ChatWithResponse(ctx context.Context, body PostApiV1ChatJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiV1ChatResponse, error) {
+	rsp, err := c.PostApiV1Chat(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiV1ChatResponse(rsp)
+}
+
+// GetHealthzWithResponse Service Health Check
+//
+// Returns the operational status of the service and its critical dependencies.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /healthz (the `GetHealthz` operationId).
+func (c *ClientWithResponses) GetHealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthzResponse, error) {
+	rsp, err := c.GetHealthz(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetHealthzResponse(rsp)
+}
+
+// HeadHealthzWithResponse Service Health Check
+//
+// Returns the operational status of the service and its critical dependencies.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with HEAD /healthz (the `HeadHealthz` operationId).
+func (c *ClientWithResponses) HeadHealthzWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HeadHealthzResponse, error) {
+	rsp, err := c.HeadHealthz(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseHeadHealthzResponse(rsp)
+}
+
+// ParsePostApiV1ChatResponse parses an HTTP response from a PostApiV1ChatWithResponse call
+func ParsePostApiV1ChatResponse(rsp *http.Response) (*PostApiV1ChatResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiV1ChatResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ChatResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetHealthzResponse parses an HTTP response from a GetHealthzWithResponse call
+func ParseGetHealthzResponse(rsp *http.Response) (*GetHealthzResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetHealthzResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HealthResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseHeadHealthzResponse parses an HTTP response from a HeadHealthzWithResponse call
+func ParseHeadHealthzResponse(rsp *http.Response) (*HeadHealthzResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &HeadHealthzResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HealthResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// PostApiV1Chat Executes a prompt using a LLM/Agent
+	// (POST /api/v1/chat)
+	PostApiV1Chat(ctx *echo.Context) error
 	// GetHealthz Service Health Check
 	// (GET /healthz)
 	GetHealthz(ctx *echo.Context) error
@@ -60,6 +701,15 @@ type ServerInterface interface {
 // ServerInterfaceWrapper converts echo contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler ServerInterface
+}
+
+// PostApiV1Chat converts echo context to params.
+func (w *ServerInterfaceWrapper) PostApiV1Chat(ctx *echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PostApiV1Chat(ctx)
+	return err
 }
 
 // GetHealthz converts echo context to params.
@@ -129,7 +779,196 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 
 	router.GET(options.BaseURL+"/healthz", wrapper.GetHealthz, options.OperationMiddlewares["GetHealthz"]...)
 	router.HEAD(options.BaseURL+"/healthz", wrapper.HeadHealthz, options.OperationMiddlewares["HeadHealthz"]...)
+	router.POST(options.BaseURL+"/api/v1/chat", wrapper.PostApiV1Chat, options.OperationMiddlewares["PostApiV1Chat"]...)
 
+}
+
+type PostApiV1ChatRequestObject struct {
+	Body *PostApiV1ChatJSONRequestBody
+}
+
+type PostApiV1ChatResponseObject interface {
+	VisitPostApiV1ChatResponse(w http.ResponseWriter) error
+}
+
+type PostApiV1Chat200JSONResponse ChatResponse
+
+func (response PostApiV1Chat200JSONResponse) VisitPostApiV1ChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostApiV1Chat500JSONResponse ErrorResponse
+
+func (response PostApiV1Chat500JSONResponse) VisitPostApiV1ChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHealthzRequestObject struct {
+}
+
+type GetHealthzResponseObject interface {
+	VisitGetHealthzResponse(w http.ResponseWriter) error
+}
+
+type GetHealthz200JSONResponse HealthResponse
+
+func (response GetHealthz200JSONResponse) VisitGetHealthzResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeadHealthzRequestObject struct {
+}
+
+type HeadHealthzResponseObject interface {
+	VisitHeadHealthzResponse(w http.ResponseWriter) error
+}
+
+type HeadHealthz200JSONResponse HealthResponse
+
+func (response HeadHealthz200JSONResponse) VisitHeadHealthzResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+// StrictServerInterface represents all server handlers.
+type StrictServerInterface interface {
+	// PostApiV1Chat Executes a prompt using a LLM/Agent
+	// (POST /api/v1/chat)
+	PostApiV1Chat(ctx context.Context, request PostApiV1ChatRequestObject) (PostApiV1ChatResponseObject, error)
+	// GetHealthz Service Health Check
+	// (GET /healthz)
+	GetHealthz(ctx context.Context, request GetHealthzRequestObject) (GetHealthzResponseObject, error)
+	// HeadHealthz Service Health Check
+	// (HEAD /healthz)
+	HeadHealthz(ctx context.Context, request HeadHealthzRequestObject) (HeadHealthzResponseObject, error)
+}
+
+type StrictHandlerFunc func(ctx *echo.Context, request any) (any, error)
+type StrictMiddlewareFunc func(f StrictHandlerFunc, operationID string) StrictHandlerFunc
+
+func NewStrictHandler(ssi StrictServerInterface, middlewares []StrictMiddlewareFunc) ServerInterface {
+	return &strictHandler{ssi: ssi, middlewares: middlewares}
+}
+
+type strictHandler struct {
+	ssi         StrictServerInterface
+	middlewares []StrictMiddlewareFunc
+}
+
+// PostApiV1Chat operation middleware
+func (sh *strictHandler) PostApiV1Chat(ctx *echo.Context) error {
+	var request PostApiV1ChatRequestObject
+
+	var body PostApiV1ChatJSONRequestBody
+	var err error
+	if _, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// Bind only the request body, so that path and query parameters
+		// are not also bound into the body struct.
+		err = echo.BindBody(ctx, &body)
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding.
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.PostApiV1Chat(ctx.Request().Context(), request.(PostApiV1ChatRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostApiV1Chat")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(PostApiV1ChatResponseObject); ok {
+		return validResponse.VisitPostApiV1ChatResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetHealthz operation middleware
+func (sh *strictHandler) GetHealthz(ctx *echo.Context) error {
+	var request GetHealthzRequestObject
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHealthz(ctx.Request().Context(), request.(GetHealthzRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHealthz")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetHealthzResponseObject); ok {
+		return validResponse.VisitGetHealthzResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// HeadHealthz operation middleware
+func (sh *strictHandler) HeadHealthz(ctx *echo.Context) error {
+	var request HeadHealthzRequestObject
+
+	handler := func(ctx *echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.HeadHealthz(ctx.Request().Context(), request.(HeadHealthzRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "HeadHealthz")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(HeadHealthzResponseObject); ok {
+		return validResponse.VisitHeadHealthzResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
 }
 
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
@@ -137,14 +976,17 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"5JIxk9MwEIX/imah9NgGOncMBbkK5lIyV+ikF1uHLQntOhAy/u+MZOe4SRoqmquskb3vfX77zmTCFIOH",
-	"F6buTGwGTLocd9CjDPfgGDwj38QUIpI4rJ+Klrmc3iYcqKM3zV+tZhNqVpW9aAEtS0UJP2aXYKn7dlF4",
-	"qEhOEdRReHyCEVoqejnWncmCTXJRXPDU0Zcjkh5HlWl0vtOjylpQ4aBkgGKkozNQISmeH/nEgqmmiuDn",
-	"KRuH71SRDT999sYvPcWx2OfrDYUlOd/TkpmdP4Rbiv2cjnDjqL2Bcr4H5xdKe6sYOpnhgpGdxUmx2IbU",
-	"x693VNERiVextn5Xt/nHQ4TX0VFHH+q2bqmiqGUoMTdDCeV3PveQW6J7yJw8lwius5n5OpwM6oSVSU6c",
-	"0aOyiPAW3jhwZn6WuLPU0WfIbvPPW1xbUbjet21+mOAFvmDpGEdnymzzxJnt0qx/q8tz6Ur8V7Fv+I7V",
-	"mscpr3lj9b1yXmll0SdtYdda1KV5PE+TTqcXEquZ+jTAlM3rnnM79qUv9LBUNEDb/5zzDtq+tqCXZfkT",
-	"AAD//w==",
+	"5FRNT+Q4EP0rVu0eo04D2ktuLEILEqtFIO1lhFBhVyeGxDauSkMPyn8f2Uk3Q39oLsxc5pbErnovr96r",
+	"N9C+C96RE4bqDVg31GF+PGtQbui5J5b0GqIPFMUST29dyN9lFQgqYInW1TAUwMRsvbu3Zs/xUECk595G",
+	"MlB9Wbe5K9b3/MMjaUltRngO3jHt4qPjF4p78UP0S2sOHIp/Isf3PVNmt/CxQ4EKrJOTY9jQsE6oprjD",
+	"d4Ldx/c8Rh8PE+6IGWvaL8lOswvCVprD3VhQ+vz0Z6QFVPBH+T7HchpiOXa5FRTa+ZOpw91B8LGsegND",
+	"rKMNYr2DCv5bUsS2VYkNpm/YqtSLlF8oaUgxxaXVpHxU3D/wioW6GRRAru8SsH+CAox/cQmbXrELbYZ/",
+	"eld/o8xQgHULv8vito9Lsm2LTpOyriZOBwqdUUwYdbOmkZDFSoaYitTp9SUUsKTIY7P57Gg2Tz/uAzkM",
+	"Fio4mc1ncyggoDRZ5hKDLZdHpW5wTIMfU7GR4dJABdee5TTY/4+SeWEUnFj+9maVLmvvhFyuwxBaq3Nl",
+	"+ciJxjp7Pxrq97EcPk5VYk/5w2ibTPx4Pv9k6MmTGXt7KloTs4qbOwX89Yn4HyO2h8ClE4rJkZRuZs9z",
+	"33UYV1DB+SvpXogVqnHtqJ6tqxWqq6t/y9M60UsVZZP9/zWxqUl2zXdD0kfH2e3bMeh5OwfJk1ZY6WjF",
+	"amyVoUDOkNOWONnzo4X+IbmY8H/iJLf2y75ZTvQtq1GPVUr0xNXVyjqFylAd0ZAZN8BsS/B1ixFMnTWk",
+	"c8ix5rQIbvNqgLuhgIbQ/GKdLwjN7yb0MAzfAgAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

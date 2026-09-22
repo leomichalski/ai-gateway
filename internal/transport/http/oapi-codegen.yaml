@@ -3,4 +3,6 @@ generate:
   echo5-server: true
   models: true
   embedded-spec: true
+  strict-server: true
+  client: true
 output: internal/transport/http/gen.go
