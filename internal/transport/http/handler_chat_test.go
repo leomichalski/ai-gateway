@@ -5,16 +5,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"github.com/leomichalski/aigateway/internal/adapter/adk_runner"
 	"github.com/leomichalski/aigateway/internal/adapter/secrets"
 	"github.com/leomichalski/aigateway/internal/usecases"
 )
-
 
 var _ = Describe("Chat API Endpoint", func() {
 	var (
@@ -28,15 +27,15 @@ var _ = Describe("Chat API Endpoint", func() {
 		e.Use(middleware.Recover())
 		// e.Use(middleware.Logger())
 		// Inicialize com Mocks (para testar regras, não a rede real)
-		// mockAdapter := mocks.NewMockAgentRunner()
+		// mockAdapter := mocks.NewMockLLMProvider()
 		// mockUC = usecases.NewChatUseCase(mockAdapter)
 		// apiHandler := NewAPIHandler(mockUC)
 
 		llmAdapter := adk_runner.NewGoogleADKAdapter()
 		envSecretProvider := secrets.NewEnvSecretProvider()
 		chatUC = usecases.NewChatUseCase(llmAdapter, envSecretProvider)
-		apiHandler := NewAPIHandler(chatUC) 
-		
+		apiHandler := NewAPIHandler(chatUC)
+
 		strictHandler := NewStrictHandler(apiHandler, nil)
 		RegisterHandlers(e, strictHandler)
 
@@ -51,7 +50,6 @@ var _ = Describe("Chat API Endpoint", func() {
 
 	Context("When I send a valid prompt", func() {
 		It("must return 200 OK with an OpenAI compatible answer", func() {
-			// ARRANGE
 			modelName := "gemini-3.5-flash-lite"
 			body := PostV1ChatCompletionJSONRequestBody{
 				Model: modelName,
@@ -63,7 +61,6 @@ var _ = Describe("Chat API Endpoint", func() {
 				},
 			}
 
-			// ACT - Call the API using the typed client (based on operationId: PostV1ChatCompletion)
 			ctx := context.Background()
 			resp, err := client.PostV1ChatCompletionWithResponse(ctx, body)
 
@@ -76,7 +73,7 @@ var _ = Describe("Chat API Endpoint", func() {
 			Expect(resp.JSON200.Choices).NotTo(BeEmpty())
 			Expect(resp.JSON200.Choices[0].Message.Content).To(ContainSubstring("Brasília"))
 			Expect(string(resp.JSON200.Choices[0].FinishReason)).To(Equal("stop"))
-			
+
 			// Metadata
 			Expect(resp.JSON200.Model).To(Equal(modelName))
 			Expect(resp.JSON200.Usage.TotalTokens).To(BeNumerically(">", 0))

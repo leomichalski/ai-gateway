@@ -18,19 +18,19 @@ import (
 )
 
 // Ensure struct implements the interface at compile time
-var _ outbound.AgentRunner = (*GoogleADKAdapter)(nil)
+var _ outbound.LLMProvider = (*GoogleADKAdapter)(nil)
 
 type GoogleADKAdapter struct {
 	// apiKey string, client *adk.Client, etc.
 }
 
-func NewGoogleADKAdapter() outbound.AgentRunner {
+func NewGoogleADKAdapter() outbound.LLMProvider {
 	// adkClient: adk.NewClient(os.Getenv("ADK_API_KEY")),
 	return &GoogleADKAdapter{}
 }
 
-// Implementa a porta AgentRunner exigida pelo Gateway
-func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, secretProvider outbound.SecretProvider, chatRequest domain.ChatRequest) (*domain.ChatResult, error) {
+// Implementa a porta LLMProvider exigida pelo Gateway
+func (a *GoogleADKAdapter) GenerateCompletion(ctx context.Context, secretProvider outbound.SecretProvider, chatRequest domain.ChatRequest) (*domain.ChatResult, error) {
 	// slog.Debug("Executing ADK task", slog.String("session_id", sessionID))
 	// Enforce timeouts to protect the Gateway (Circuit Breaker baseline)
 
@@ -74,11 +74,11 @@ func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, secretProvider outbo
 			Temperature: chatRequest.Temperature,
 		}
 	}
-	// Direct Stateless Generation 
+	// Direct Stateless Generation
 	llmReq := &model.LLMRequest{
 		Model:    chatRequest.Model,
 		Contents: contents,
-		Config: genConfig,
+		Config:   genConfig,
 		// Tools:
 	}
 
