@@ -90,7 +90,7 @@ func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, secretProvider outbo
 		lastResp = resp
 	}
 
-	// 3. Extract the response text
+	// Extract the response text
 	var responseBuilder strings.Builder
 	if lastResp != nil && lastResp.Content != nil {
 		for _, part := range lastResp.Content.Parts {
@@ -100,7 +100,7 @@ func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, secretProvider outbo
 		}
 	}
 
-	// 4. Extract Usage metadata
+	// Extract Usage metadata
 	var (
 		promptTokens int32
 		compTokens   int32
@@ -112,7 +112,7 @@ func (a *GoogleADKAdapter) ExecuteTask(ctx context.Context, secretProvider outbo
 		totalTokens = lastResp.UsageMetadata.TotalTokenCount
 	}
 
-	// 5. Determine Finish Reason based on ADK's last response flag
+	// Determine Finish Reason based on ADK's last response flag
 	finishReason := "stop"
 	if lastResp.FinishReason != "" {
 		finishReason = strings.ToLower(string(lastResp.FinishReason))

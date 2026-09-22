@@ -7,10 +7,8 @@ import (
 // -----------------------------------------------------------------------------
 // GET /healthz
 // -----------------------------------------------------------------------------
-// Como usamos StrictServerInterface, não manipulamos *echo.Context diretamente.
-// Retornamos o DTO tipado e o oapi-codegen faz o ctx.JSON(StatusOK, resp) por debaixo dos panos.
 func (s *APIHandler) GetHealthz(ctx context.Context, req GetHealthzRequestObject) (GetHealthzResponseObject, error) {
-	// A struct GetHealthz200JSONResponse é gerada baseada no seu openapi.yaml
+	// struct GetHealthz200JSONResponse generated from openapi.yaml
 	return GetHealthz200JSONResponse{
 		Status: "Ok",
 	}, nil

@@ -53,7 +53,7 @@ func (s *APIHandler) PostV1ChatCompletion(ctx context.Context, req PostV1ChatCom
 	}
 
 
-	// 3. Map Domain Result to OpenAI DTO Response
+	// Map Domain Result to OpenAI DTO Response
 	// Generate a unique ID and Timestamp for the response
 	responseID := "chatcmpl-" + uuid.New().String()
 	createdTS := time.Now().Unix()
