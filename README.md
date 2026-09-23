@@ -76,32 +76,13 @@ The `sk_test_123` token and development permissions are local seeds. **Never use
 
 RAG, agents, and workflows are not goals of this gateway. For those use cases, use a specialized framework and invoke it through the gateway like an OpenAI-compatible model. The gateway should focus on edge identity, authorization, policy enforcement, limits, and observability — not duplicate AI application orchestration.
 
-## Advanced configuration
+### Current architecture and limits
 
-There is no YAML/JSON routing file in the current runtime. Operational configuration uses environment variables, and authorization is implemented as a Casbin policy persisted in MongoDB.
-
-### Environment variables
-
-| Variable | Required | Purpose |
-| --- | ---: | --- |
-| `GOOGLE_API_KEY` | Yes | Credential passed to the Gemini client through Google ADK. |
-| `DATABASE_HOST` | Yes | MongoDB host used by the Casbin adapter. |
-| `DATABASE_PORT` | Yes | MongoDB port. |
-| `DATABASE_USERNAME` | Yes | MongoDB username. |
-| `DATABASE_PASSWORD` | Yes | MongoDB password. |
-| `DATABASE_NAME` | Yes | Database containing Casbin rules. |
-| `DATABASE_AUTH_SOURCE` | Yes | MongoDB authentication database. |
-
-### Per-model access policy
-
-The local development seed policy below allows `tenant-local-dev` to use only the listed models. This is the current tenant/model consumption-control mechanism; it is not a routing or retry rule.
-
-```javascript
-const devPolicies = [
-  { ptype: "p", v0: "tenant-local-dev", v1: "gemini-3.5-flash-lite", v2: "use" },
-  { ptype: "p", v0: "tenant-local-dev", v1: "gemini-3.1-pro-preview", v2: "use" }
-];
-```
+- **Stack:** Go 1.26.8, Echo v5, OpenAPI 3 + `oapi-codegen`, Google ADK/GenAI, Casbin, and MongoDB.
+- **Concurrency:** the HTTP server uses Go/Echo’s concurrency model; rate limits and quotas by tenant, key, model, or cost remain on the roadmap. The project also has no queue or bulkhead.
+- **Resilience:** a 120-second timeout and 10-second graceful shutdown exist. Retry, circuit breaker, and fallback do not yet exist.
+- **Security:** the provider key comes from the environment; the completion route requires a Bearer token and model-level Casbin authorization. 
+- **Contract:** messages are textual; the current Gemini adapter maps `assistant` to the model role and falls back to the user role for all other roles.
 
 ## Supported provider matrix
 
@@ -155,6 +136,33 @@ const completion = await response.json();
 
 > The generator produces class names, methods, and authentication options based on the selected spec and generator versions. Pin the OpenAPI Generator image version in CI for reproducible builds, and regenerate clients whenever the contract changes.
 
+## Advanced configuration
+
+There is no YAML/JSON routing file in the current runtime. Operational configuration uses environment variables, and authorization is implemented as a Casbin policy persisted in MongoDB.
+
+### Environment variables
+
+| Variable | Required | Purpose |
+| --- | ---: | --- |
+| `GOOGLE_API_KEY` | Yes | Credential passed to the Gemini client through Google ADK. |
+| `DATABASE_HOST` | Yes | MongoDB host used by the Casbin adapter. |
+| `DATABASE_PORT` | Yes | MongoDB port. |
+| `DATABASE_USERNAME` | Yes | MongoDB username. |
+| `DATABASE_PASSWORD` | Yes | MongoDB password. |
+| `DATABASE_NAME` | Yes | Database containing Casbin rules. |
+| `DATABASE_AUTH_SOURCE` | Yes | MongoDB authentication database. |
+
+### Per-model access policy
+
+The local development seed policy below allows `tenant-local-dev` to use only the listed models. This is the current tenant/model consumption-control mechanism; it is not a routing or retry rule.
+
+```javascript
+const devPolicies = [
+  { ptype: "p", v0: "tenant-local-dev", v1: "gemini-3.5-flash-lite", v2: "use" },
+  { ptype: "p", v0: "tenant-local-dev", v1: "gemini-3.1-pro-preview", v2: "use" }
+];
+```
+
 ## Performance benchmarks
 
 There are no versioned benchmarks in this repository. To preserve operational trust, the project does not publish claims such as “`<2 ms` overhead,” memory usage, or throughput without a reproducible methodology.
@@ -173,14 +181,6 @@ There are no versioned benchmarks in this repository. To preserve operational tr
 2. Record added p50, p95, and p99 latency, RSS, CPU, error rate, and throughput.
 3. Pin the commit version, region, model, prompt/response size, concurrency, and test duration.
 4. Publish the script and raw data with the table. Without them, performance numbers are neither comparable nor actionable.
-
-## Current architecture and limits
-
-- **Stack:** Go 1.26.8, Echo v5, OpenAPI 3 + `oapi-codegen`, Google ADK/GenAI, Casbin, and MongoDB.
-- **Concurrency:** the HTTP server uses Go/Echo’s concurrency model; rate limits and quotas by tenant, key, model, or cost remain on the roadmap. The project also has no queue or bulkhead.
-- **Resilience:** a 120-second timeout and 10-second graceful shutdown exist. Retry, circuit breaker, and fallback do not yet exist.
-- **Security:** the provider key comes from the environment; the completion route requires a Bearer token and model-level Casbin authorization. Do not log or commit `GOOGLE_API_KEY`.
-- **Contract:** messages are textual; the current Gemini adapter maps `assistant` to the model role and falls back to the user role for all other roles.
 
 ## Contributing
 
