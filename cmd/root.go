@@ -8,21 +8,21 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"fmt"
 	"time"
-	"crypto/sha256"
-	"encoding/hex"
 	"strings"
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
-
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	
 	httpTransport "github.com/leomichalski/aigateway/internal/transport/http"
 	"github.com/leomichalski/aigateway/internal/adapter/adk_runner"
 	"github.com/leomichalski/aigateway/internal/adapter/secrets"
 	"github.com/leomichalski/aigateway/internal/adapter/casbin"
 	"github.com/leomichalski/aigateway/internal/adapter/repository"
 	"github.com/leomichalski/aigateway/internal/usecases"
-	"github.com/leomichalski/aigateway/internal/domain"
 	"github.com/leomichalski/aigateway/internal/transport/http/middleware/authn"
 	"github.com/leomichalski/aigateway/internal/transport/http/middleware/authz"
 
@@ -60,20 +60,37 @@ var rootCmd = &cobra.Command{
 		e.Use(middleware.Recover())
 
 		// AuthN middleware
-		// TODO: substitute seed with mongodb
-		rawTestKey := "sk_test_123"
-		hash := sha256.Sum256([]byte(rawTestKey))
-		keyHash := hex.EncodeToString(hash[:])
+		host := os.Getenv("DATABASE_HOST")
+		port := os.Getenv("DATABASE_PORT")
+		user := os.Getenv("DATABASE_USERNAME")
+		pass := os.Getenv("DATABASE_PASSWORD")
+		dbName := os.Getenv("DATABASE_NAME")
 
-		seedIdentities := map[string]domain.Identity{
-			keyHash: {
-				TenantID:   "tenant-local-dev",
-				Tier:       "premium",
-				APIKeyHash: keyHash,
-			},
+		authSource := os.Getenv("DATABASE_AUTH_SOURCE")
+		if authSource == "" {
+			authSource = "admin"
 		}
 
-		identityRepo := repository.NewStaticIdentityRepository(seedIdentities)
+		// Append ?authSource= to the URI
+		mongoURI := fmt.Sprintf("mongodb://%s:%s@%s:%s/%s?authSource=%s",
+			user, pass, host, port, dbName, authSource)
+
+		// Create a short-lived context JUST for the initial connection
+		startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		client, err := mongo.Connect(startupCtx, options.Client().ApplyURI(mongoURI))
+		cancel() // instantly release resources after Connect finishes (success or fail)
+		
+		if err != nil {
+			// Ping it to ensure we actually connected
+			panic("failed to connect to mongodb: " + err.Error())
+		}
+		if err := client.Ping(context.Background(), nil); err != nil {
+			panic("failed to ping mongodb: " + err.Error())
+		}
+
+		db := client.Database(dbName)
+
+		identityRepo := repository.NewMongoIdentityRepository(db)
 		authNUseCase := usecases.NewAuthNUseCase(identityRepo)
 
 		// Skip authentication for public routes
@@ -132,11 +149,28 @@ var rootCmd = &cobra.Command{
 		// Start the server synchronously.
 		// This blocks natively and handles the entire graceful shutdown flow
 		// internally when the signal context (ctx) is canceled.
-		if err := sc.Start(ctx, e); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("server encountered an error", "err", err)
-			os.Exit(1)
+		serverErr := sc.Start(ctx, e)
+		if serverErr != nil && !errors.Is(serverErr, http.ErrServerClosed) {
+			slog.Error("server encountered an error", "err", serverErr)
+			// Do NOT os.Exit(1) right here, or we skip MongoDB cleanup!
+		}
+		slog.Info("disconnecting MongoDB...")
+
+		// We MUST create a fresh context here.
+		// The original 'ctx' is already canceled by the OS signal!
+		mongoCtx, cancelMongo := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelMongo()
+
+		if err := client.Disconnect(mongoCtx); err != nil {
+			slog.Error("failed to disconnect MongoDB cleanly", "err", err)
+		} else {
+			slog.Info("MongoDB disconnected elegantly")
 		}
 
+		// Finally, exit with a non-zero code if the server crashed earlier
+		if serverErr != nil && !errors.Is(serverErr, http.ErrServerClosed) {
+			os.Exit(1)
+		}
 		slog.Info("server stopped completely")
 	},
 }
