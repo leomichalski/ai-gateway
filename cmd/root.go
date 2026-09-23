@@ -80,8 +80,12 @@ var rootCmd = &cobra.Command{
 		envSecretProvider := secrets.NewEnvSecretProvider()
 		chatUC := usecases.NewChatUseCase(llmAdapter, envSecretProvider)
 
-		// Handlers and route registration
-		apiHandler := httpTransport.NewAPIHandler(chatUC)
+		// Initialize Sub-Handlers
+		chatHandler := httpTransport.NewChatHandler(chatUC)
+		// templateHandler := httpTransport.NewTemplateHandler(templateUC)
+		// Assemble the Root API Handler
+		apiHandler := httpTransport.NewAPIHandler(chatHandler /*, templateHandler */)
+		// Register with oapi-codegen and Echo
 		strictHandler := httpTransport.NewStrictHandler(apiHandler, nil)
 		httpTransport.RegisterHandlers(e, strictHandler)
 

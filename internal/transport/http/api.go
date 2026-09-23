@@ -1,18 +1,16 @@
 package api
 
-import (
-	"github.com/leomichalski/aigateway/internal/usecases"
-)
-
+// APIHandler acts as a root facade. By embedding the domain-specific handlers, 
+// it automatically inherits their methods and satisfies the oapi-codegen StrictServerInterface.
 type APIHandler struct {
-	chatUseCase *usecases.ChatUseCase
-	// mu    sync.RWMutex
-	// tasks map[string]Task
+	*ChatHandler
+	// *TemplateHandler
+	// *ModelHandler
 }
 
-func NewAPIHandler(uc *usecases.ChatUseCase) *APIHandler {
+// NewAPIHandler builds the root handler from all the specialized handlers.
+func NewAPIHandler(chatHandler *ChatHandler) *APIHandler {
 	return &APIHandler{
-		chatUseCase: uc,
-		// tasks: make(map[string]Task),
+		ChatHandler: chatHandler,
 	}
 }

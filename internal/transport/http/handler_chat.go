@@ -12,8 +12,19 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/leomichalski/aigateway/internal/domain"
+	"github.com/leomichalski/aigateway/internal/usecases"
 )
 
+// ChatHandler encapsulates all chat-related HTTP logic.
+type ChatHandler struct {
+	chatUseCase *usecases.ChatUseCase
+}
+
+func NewChatHandler(uc *usecases.ChatUseCase) *ChatHandler {
+	return &ChatHandler{
+		chatUseCase: uc,
+	}
+}
 
 // mapDomainToErrorResponse translates pure domain errors into oapi-codegen responses.
 func mapDomainToErrorResponse(err error) (string, string) {

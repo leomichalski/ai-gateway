@@ -37,8 +37,11 @@ var _ = Describe("Chat API Endpoint", func() {
 		llmAdapter := adk_runner.NewGoogleADKAdapter()
 		envSecretProvider := secrets.NewEnvSecretProvider()
 		chatUC = usecases.NewChatUseCase(llmAdapter, envSecretProvider)
-		apiHandler := NewAPIHandler(chatUC)
-
+		// Initialize Sub-Handlers
+		chatHandler := NewChatHandler(chatUC)
+		// Assemble the Root API Handler
+		apiHandler := NewAPIHandler(chatHandler)
+		// Register with oapi-codegen and Echo
 		strictHandler := NewStrictHandler(apiHandler, nil)
 		RegisterHandlers(e, strictHandler)
 
