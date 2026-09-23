@@ -10,7 +10,7 @@ import (
 // ConfigureSwagger mounts the OpenAPI JSON and the Swagger UI on the Echo router.
 func ConfigureSwagger(e *echo.Echo) {
 	// Explicitly cast to echo.HandlerFunc to satisfy the Echo v5 compiler requirement
-	e.GET("/openapi.json", echo.HandlerFunc(func(c *echo.Context) error {
+	e.GET("/docs/openapi.json", echo.HandlerFunc(func(c *echo.Context) error {
 		swagger, err := GetSwagger()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to load swagger spec"})
@@ -39,7 +39,7 @@ func ConfigureSwagger(e *echo.Echo) {
     <script>
         window.onload = function() {
             window.ui = SwaggerUIBundle({
-                url: "/openapi.json",
+                url: "/docs/openapi.json",
                 dom_id: '#swagger-ui',
                 deepLinking: true,
                 presets: [

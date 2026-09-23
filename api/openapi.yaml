@@ -9,6 +9,8 @@ paths:
     get:
       summary: Service Health Check
       description: Returns the operational status of the service and its critical dependencies.
+      # Override the global security to make this endpoint public
+      security: []
       tags:
       - System
       responses:
@@ -21,6 +23,8 @@ paths:
     head:
       summary: Service Health Check
       description: Returns the operational status of the service and its critical dependencies.
+      # Override the global security to make this endpoint public
+      security: []
       tags:
       - System
       responses:
@@ -229,3 +233,11 @@ components:
       properties:
         error:
           $ref: '#/components/schemas/ErrorObject'
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+
+security:
+  - BearerAuth: []

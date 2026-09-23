@@ -9,6 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -17,6 +20,9 @@ import (
 	"github.com/leomichalski/aigateway/internal/adapter/adk_runner"
 	"github.com/leomichalski/aigateway/internal/adapter/secrets"
 	"github.com/leomichalski/aigateway/internal/usecases"
+	"github.com/leomichalski/aigateway/internal/domain"
+	"github.com/leomichalski/aigateway/internal/adapter/repository"
+	"github.com/leomichalski/aigateway/internal/transport/http/middleware/authn"
 
 	"github.com/spf13/cobra"
 )
@@ -43,6 +49,32 @@ var rootCmd = &cobra.Command{
 
 		e.Use(middleware.RequestLogger())
 		e.Use(middleware.Recover())
+
+		// TODO: substitute seed with mongodb
+		// Seed data for local testing (Raw key: "sk_test_123")
+		rawTestKey := "sk_test_123"
+		hash := sha256.Sum256([]byte(rawTestKey))
+		keyHash := hex.EncodeToString(hash[:])
+
+		seedIdentities := map[string]domain.Identity{
+			keyHash: {
+				TenantID:   "tenant-local-dev",
+				Tier:       "premium",
+				APIKeyHash: keyHash,
+			},
+		}
+
+		identityRepo := repository.NewStaticIdentityRepository(seedIdentities)
+		authNUseCase := usecases.NewAuthNUseCase(identityRepo)
+
+		// Register AuthN Middleware globally
+		// But skip authentication for public routes
+		skipper := func(c *echo.Context) bool {
+			path := c.Request().URL.Path
+			// Skip exactly /health, and any path starting with /docs
+			return path == "/health" || (debug && strings.HasPrefix(path, "/docs"))
+		}
+		e.Use(authn.Middleware(authNUseCase, skipper))
 
 		llmAdapter := adk_runner.NewGoogleADKAdapter()
 		envSecretProvider := secrets.NewEnvSecretProvider()
