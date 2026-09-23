@@ -19,10 +19,12 @@ import (
 	httpTransport "github.com/leomichalski/aigateway/internal/transport/http"
 	"github.com/leomichalski/aigateway/internal/adapter/adk_runner"
 	"github.com/leomichalski/aigateway/internal/adapter/secrets"
+	"github.com/leomichalski/aigateway/internal/adapter/casbin"
+	"github.com/leomichalski/aigateway/internal/adapter/repository"
 	"github.com/leomichalski/aigateway/internal/usecases"
 	"github.com/leomichalski/aigateway/internal/domain"
-	"github.com/leomichalski/aigateway/internal/adapter/repository"
 	"github.com/leomichalski/aigateway/internal/transport/http/middleware/authn"
+	"github.com/leomichalski/aigateway/internal/transport/http/middleware/authz"
 
 	"github.com/spf13/cobra"
 )
@@ -30,6 +32,7 @@ import (
 var (
 	serverPort string
 	debug bool
+	// environment string
 )
 
 var rootCmd = &cobra.Command{
@@ -37,7 +40,9 @@ var rootCmd = &cobra.Command{
 	Short: "AI Gateway.",
 	Long:  `AI Gateway.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Configure slog (Echo v5 default logging standard)
+		// =====================================================================
+		// Configure logger
+		// =====================================================================
 		loggerHandlerOptions := &slog.HandlerOptions{}
 		if debug {
 			loggerHandlerOptions.Level = slog.LevelDebug
@@ -45,13 +50,17 @@ var rootCmd = &cobra.Command{
 		logger := slog.New(slog.NewJSONHandler(os.Stdout, loggerHandlerOptions))
 		slog.SetDefault(logger)
 
+		// =====================================================================
+		// Echo server
+		// =====================================================================
 		e := echo.New()
 
+		// MIDDLEWARES
 		e.Use(middleware.RequestLogger())
 		e.Use(middleware.Recover())
 
+		// AuthN middleware
 		// TODO: substitute seed with mongodb
-		// Seed data for local testing (Raw key: "sk_test_123")
 		rawTestKey := "sk_test_123"
 		hash := sha256.Sum256([]byte(rawTestKey))
 		keyHash := hex.EncodeToString(hash[:])
@@ -67,28 +76,41 @@ var rootCmd = &cobra.Command{
 		identityRepo := repository.NewStaticIdentityRepository(seedIdentities)
 		authNUseCase := usecases.NewAuthNUseCase(identityRepo)
 
-		// Register AuthN Middleware globally
-		// But skip authentication for public routes
-		skipper := func(c *echo.Context) bool {
+		// Skip authentication for public routes
+		authn_skipper := func(c *echo.Context) bool {
 			path := c.Request().URL.Path
 			// Skip exactly /health, and any path starting with /docs
-			return path == "/health" || (debug && strings.HasPrefix(path, "/docs"))
+			return path == "/healthz" || (debug && strings.HasPrefix(path, "/docs"))
 		}
-		e.Use(authn.Middleware(authNUseCase, skipper))
+		e.Use(authn.Middleware(authNUseCase, authn_skipper))
 
+		casbinEnforcer, err := casbin.NewMongoEnforcer("casbin_model.conf")
+		if err != nil {
+			slog.Error("Failed to init Casbin Enforcer.", "error", err)
+			os.Exit(1)
+		}
+		authZUseCase := usecases.NewAuthZUseCase(casbinEnforcer)
+		// Skips checking model permissions for endpoints other than "/v1/chat/completions"
+		authz_llmmodel_skipper := func(c *echo.Context) bool {
+			path := c.Request().URL.Path
+			return path != "/v1/chat/completions"
+		}
+		e.Use(authz.Middleware(authZUseCase, authz_llmmodel_skipper, httpTransport.ExtractLLMModelFromBody))
+		// e.Use(authz.Middleware(authZUseCase, authz_llmmodel_skipper, httpTransport.xxxxxxxxxxx))
+
+		// HANDLERS
 		llmAdapter := adk_runner.NewGoogleADKAdapter()
 		envSecretProvider := secrets.NewEnvSecretProvider()
 		chatUC := usecases.NewChatUseCase(llmAdapter, envSecretProvider)
-
-		// Initialize Sub-Handlers
 		chatHandler := httpTransport.NewChatHandler(chatUC)
+
 		// templateHandler := httpTransport.NewTemplateHandler(templateUC)
-		// Assemble the Root API Handler
+
 		apiHandler := httpTransport.NewAPIHandler(chatHandler /*, templateHandler */)
-		// Register with oapi-codegen and Echo
 		strictHandler := httpTransport.NewStrictHandler(apiHandler, nil)
 		httpTransport.RegisterHandlers(e, strictHandler)
 
+		// SWAGGER SERVER
 		if debug {
 			httpTransport.ConfigureSwagger(e)
 		}
@@ -141,5 +163,6 @@ func init() {
 	// rootCmd.Flags().BoolVar(&aA, "a-a", true, "Description.")
 	// rootCmd.Flags().DurationVar(&aA, "a-a", 30*time.Minute, "Description.")
 	rootCmd.Flags().StringVar(&serverPort, "server-port", "8080", "Server port.")
-	rootCmd.Flags().BoolVar(&debug, "debug", true, "Debug mode.")
+	rootCmd.Flags().BoolVar(&debug, "debug", false, "Debug mode.")
+	// rootCmd.Flags().StringVar(&environment, "environment", "dev", "Environment (dev or else).")
 }

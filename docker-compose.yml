@@ -1,0 +1,76 @@
+services:
+  # ---------------------------------------------------------
+  # Go API Gateway Application
+  # ---------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["--debug=true"]
+    container_name: aigateway-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:      
+      # MongoDB connection variables (matching mongodb)
+      - DATABASE_HOST=mongodb
+      - DATABASE_PORT=27017
+      - DATABASE_USERNAME=root
+      - DATABASE_PASSWORD=notasecret
+      - DATABASE_NAME=aigateway
+      - DATABASE_AUTH_SOURCE=admin
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      mongodb-seed:
+        condition: service_completed_successfully
+    networks:
+      - aigateway-network
+
+  # ---------------------------------------------------------
+  # MongoDB Database
+  # ---------------------------------------------------------
+  mongodb:
+    image: mongo:7.0
+    container_name: aigateway-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017" # Exposed for local debugging (MongoDB Compass, etc.)
+    environment:
+      # Root user credentials (must match the App's DATABASE_USERNAME / DATABASE_PASSWORD)
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=notasecret
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo "db.runCommand('ping').ok" | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aigateway-network
+
+  mongodb-seed:
+    image: mongo:7.0
+    container_name: aigateway-mongodb-seed
+    restart: "no"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./scripts/mongo-init.js:/tmp/mongo-init.js:ro
+    command:
+      - mongosh
+      - "mongodb://root:notasecret@mongodb:27017/aigateway?authSource=admin"
+      - -f
+      - /tmp/mongo-init.js
+    networks:
+      - aigateway-network
+
+volumes:
+  mongo_data:
+    name: aigateway_mongo_data
+
+networks:
+  aigateway-network:
+    driver: bridge
