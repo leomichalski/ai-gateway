@@ -78,7 +78,7 @@ The gateway standardizes the integration boundary — authentication, request/re
 
 ### Scope boundaries
 
-RAG, agents, and workflows are not goals of this gateway. For those use cases, use a specialized framework and invoke it through the gateway when it exposes an OpenAI-compatible interface. The gateway should focus on edge identity, authorization, policy enforcement, limits, and observability—not duplicate AI application orchestration.
+RAG, agents, and workflows are not goals of this gateway. For those use cases, use a specialized framework and invoke it through the gateway like an OpenAI-compatible model. The gateway should focus on edge identity, authorization, policy enforcement, limits, and observability — not duplicate AI application orchestration.
 
 ## Advanced configuration
 
