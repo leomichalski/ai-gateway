@@ -2,7 +2,7 @@
 
 ![Status: experimental](https://img.shields.io/badge/status-experimental-orange) ![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go) ![API](https://img.shields.io/badge/API-OpenAI--compatible-412991) ![Runtime](https://img.shields.io/badge/runtime-Docker%20%2B%20MongoDB-2496ED?logo=docker)
 
-**An OpenAI-compatible edge that centralizes credentials, per-model authorization, and SSE streaming without coupling clients to a provider SDK.**
+**An OpenAI-compatible edge that centralizes credentials, per-model authorization, and SSE streaming.**
 
 > **Current stage:** experimental. The HTTP surface and Gemini adapter are implemented; multi-provider routing, semantic caching, PII masking, metrics/traces, and benchmarks are not yet part of the runtime.
 
@@ -71,10 +71,6 @@ The `sk_test_123` token and development permissions are local seeds. **Never use
 | **Semantic caching** | 🗺️ Planned | The chat use case has an extension point, but there is no cache, embeddings, or response storage implemented. |
 | **Observability** | 🗺️ Planned | JSON logs and request logging exist; exported Prometheus metrics and OpenTelemetry traces are not yet wired into the server. |
 | **Guardrails / PII masking** | 🗺️ Planned | The runtime does not mask PII or enforce content policies before sending requests to the provider. |
-
-### Why this reduces client lock-in
-
-The gateway standardizes the integration boundary — authentication, request/response shape, streaming, and normalized errors — so clients do not need a provider SDK or a provider-specific code path. It deliberately does not flatten models into a false “drop-in replacement” abstraction: availability, capabilities, token accounting, safety behavior, latency, cost, and output quality remain properties of the configured backend. That keeps provider changes isolated where the contract is genuinely portable, while forcing routing and fallback policies to be explicit about the trade-offs they make.
 
 ### Scope boundaries
 
