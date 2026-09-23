@@ -5,29 +5,31 @@ import (
 	"iter"
 
 	"github.com/leomichalski/aigateway/internal/domain"
+	"github.com/leomichalski/aigateway/internal/port/inbound"
 	"github.com/leomichalski/aigateway/internal/port/outbound"
 )
 
-type ChatUseCase struct {
+// chatUseCase is the concrete implementation of inbound.ChatUseCase.
+// Notice it is unexported (lowercase) to force the use of the interface.
+type chatUseCase struct {
 	agentRunner    outbound.LLMProvider
 	secretProvider outbound.SecretProvider
 }
 
-func NewChatUseCase(LLMProvider outbound.LLMProvider, SecretProvider outbound.SecretProvider) *ChatUseCase {
-	return &ChatUseCase{
-		agentRunner:    LLMProvider,
-		secretProvider: SecretProvider,
+// NewChatUseCase instantiates the use case and returns the inbound port interface.
+func NewChatUseCase(llmProvider outbound.LLMProvider, secretProvider outbound.SecretProvider) inbound.ChatUseCase {
+	return &chatUseCase{
+		agentRunner:    llmProvider,
+		secretProvider: secretProvider,
 	}
 }
 
-// func (uc *ChatUseCase) ProcessChat(ctx context.Context, sessionID, modelName string, prompt string) (*domain.ChatResult, error) {
-func (uc *ChatUseCase) ProcessChat(ctx context.Context, chatRequest domain.ChatRequest) (*domain.ChatResult, error) {
+func (uc *chatUseCase) ProcessChat(ctx context.Context, chatRequest domain.ChatRequest) (*domain.ChatResult, error) {
 	// TODO: business rules like checking the semantic cache before calling LLMs
 	return uc.agentRunner.GenerateCompletion(ctx, uc.secretProvider, chatRequest)
-	// return uc.agentRunner.GenerateCompletion(ctx, uc.secretProvider, sessionID, modelName, prompt)
 }
 
-func (uc *ChatUseCase) ProcessChatStream(ctx context.Context, chatRequest domain.ChatRequest) (iter.Seq2[*domain.ChatChunk, error], error) {
+func (uc *chatUseCase) ProcessChatStream(ctx context.Context, chatRequest domain.ChatRequest) (iter.Seq2[*domain.ChatChunk, error], error) {
 	// TODO: business rules like checking the semantic cache before calling LLMs
 	return uc.agentRunner.StreamCompletion(ctx, uc.secretProvider, chatRequest)
 }

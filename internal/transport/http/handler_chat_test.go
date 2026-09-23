@@ -8,11 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"testing"
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 
 	"github.com/leomichalski/aigateway/internal/domain"
 	"github.com/leomichalski/aigateway/internal/port/outbound"
@@ -50,123 +49,150 @@ func (f *fakeLLMProvider) StreamCompletion(
 	}, nil
 }
 
-var _ = Describe("Chat API Endpoint", func() {
-	var (
-		server *httptest.Server
-		client *ClientWithResponses
-	)
+func newChatTestClient(t *testing.T) *ClientWithResponses {
+	t.Helper()
 
-	BeforeEach(func() {
-		e := echo.New()
-		e.Use(middleware.Recover())
+	e := echo.New()
+	e.Use(middleware.Recover())
 
-		chatUC := usecases.NewChatUseCase(&fakeLLMProvider{}, nil)
-		chatHandler := NewChatHandler(chatUC)
-		apiHandler := NewAPIHandler(chatHandler)
-		strictHandler := NewStrictHandler(apiHandler, nil)
-		RegisterHandlers(e, strictHandler)
+	chatUC := usecases.NewChatUseCase(&fakeLLMProvider{}, nil)
+	chatHandler := NewChatHandler(chatUC)
+	apiHandler := NewAPIHandler(chatHandler)
+	strictHandler := NewStrictHandler(apiHandler, nil)
+	RegisterHandlers(e, strictHandler)
 
-		server = httptest.NewServer(e)
+	server := httptest.NewServer(e)
+	t.Cleanup(server.Close)
 
-		client, _ = NewClientWithResponses(server.URL)
-	})
+	client, err := NewClientWithResponses(server.URL)
+	if err != nil {
+		t.Fatalf("create API client: %v", err)
+	}
 
-	AfterEach(func() {
-		server.Close()
-	})
+	return client
+}
 
-	Context("When I send a valid prompt", func() {
-		It("must return 200 OK with an OpenAI compatible answer", func() {
-			modelName := "gemini-3.5-flash-lite"
-			body := PostV1ChatCompletionJSONRequestBody{
-				Model: modelName,
-				Messages: []ChatCompletionRequestMessage{
-					{
-						Role:    "user",
-						Content: "Qual a capital do Brasil?",
-					},
-				},
-			}
+func TestPostV1ChatCompletion(t *testing.T) {
+	client := newChatTestClient(t)
+	modelName := "gemini-3.5-flash-lite"
+	body := PostV1ChatCompletionJSONRequestBody{
+		Model: modelName,
+		Messages: []ChatCompletionRequestMessage{
+			{
+				Role:    "user",
+				Content: "What is the capital of Brazil?",
+			},
+		},
+	}
 
-			ctx := context.Background()
-			resp, err := client.PostV1ChatCompletionWithResponse(ctx, body)
+	resp, err := client.PostV1ChatCompletionWithResponse(context.Background(), body)
+	if err != nil {
+		t.Fatalf("post chat completion: %v", err)
+	}
+	if got, want := resp.StatusCode(), http.StatusOK; got != want {
+		t.Fatalf("status code = %d, want %d", got, want)
+	}
+	if resp.JSON200 == nil {
+		t.Fatal("expected an OpenAI-compatible completion response")
+	}
+	if got, want := resp.JSON200.Model, modelName; got != want {
+		t.Errorf("model = %q, want %q", got, want)
+	}
+	if len(resp.JSON200.Choices) != 1 {
+		t.Fatalf("choices count = %d, want 1", len(resp.JSON200.Choices))
+	}
 
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode()).To(Equal(http.StatusOK))
-			Expect(resp.JSON200).NotTo(BeNil())
+	choice := resp.JSON200.Choices[0]
+	if !strings.Contains(choice.Message.Content, "Brasília") {
+		t.Errorf("completion content = %q, want it to contain %q", choice.Message.Content, "Brasília")
+	}
+	if got, want := string(choice.FinishReason), "stop"; got != want {
+		t.Errorf("finish reason = %q, want %q", got, want)
+	}
+	if resp.JSON200.Usage.TotalTokens <= 0 {
+		t.Errorf("total tokens = %d, want > 0", resp.JSON200.Usage.TotalTokens)
+	}
+}
 
-			Expect(resp.JSON200.Choices).NotTo(BeEmpty())
-			Expect(resp.JSON200.Choices[0].Message.Content).To(ContainSubstring("Brasília"))
-			Expect(string(resp.JSON200.Choices[0].FinishReason)).To(Equal("stop"))
+func TestPostV1ChatCompletionStream(t *testing.T) {
+	client := newChatTestClient(t)
+	modelName := "gemini-3.5-flash-lite"
+	stream := true
+	body := PostV1ChatCompletionJSONRequestBody{
+		Model: modelName,
+		Messages: []ChatCompletionRequestMessage{
+			{
+				Role:    "user",
+				Content: "What is the capital of Brazil?",
+			},
+		},
+		Stream: &stream,
+	}
 
-			Expect(resp.JSON200.Model).To(Equal(modelName))
-			Expect(resp.JSON200.Usage.TotalTokens).To(BeNumerically(">", 0))
-		})
-	})
+	resp, err := client.PostV1ChatCompletion(context.Background(), body)
+	if err != nil {
+		t.Fatalf("post streaming chat completion: %v", err)
+	}
+	defer resp.Body.Close()
 
-	Context("When I send a valid prompt with stream=true", func() {
-		It("must return 200 OK and stream OpenAI compatible Server-Sent Events", func() {
-			modelName := "gemini-3.5-flash-lite"
-			streamFlag := true
-			body := PostV1ChatCompletionJSONRequestBody{
-				Model: modelName,
-				Messages: []ChatCompletionRequestMessage{
-					{
-						Role:    "user",
-						Content: "Qual a capital do Brasil?",
-					},
-				},
-				Stream: &streamFlag,
-			}
+	if got, want := resp.StatusCode, http.StatusOK; got != want {
+		t.Fatalf("status code = %d, want %d", got, want)
+	}
+	if contentType := resp.Header.Get("Content-Type"); !strings.Contains(contentType, "text/event-stream") {
+		t.Fatalf("content type = %q, want text/event-stream", contentType)
+	}
 
-			ctx := context.Background()
-			resp, err := client.PostV1ChatCompletion(ctx, body)
+	scanner := bufio.NewScanner(resp.Body)
+	var fullAnswer string
+	var foundDone bool
 
-			Expect(err).NotTo(HaveOccurred())
-			defer resp.Body.Close()
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			Expect(resp.Header.Get("Content-Type")).To(ContainSubstring("text/event-stream"))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			t.Fatalf("SSE line = %q, want data prefix", line)
+		}
 
-			scanner := bufio.NewScanner(resp.Body)
-			var fullAnswer string
-			var foundDone bool
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			foundDone = true
+			break
+		}
 
-			for scanner.Scan() {
-				line := scanner.Text()
-				if line == "" {
-					continue
-				}
+		var chunk struct {
+			Object  string `json:"object"`
+			Model   string `json:"model"`
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			t.Fatalf("unmarshal SSE chunk %q: %v", data, err)
+		}
+		if got, want := chunk.Object, "chat.completion.chunk"; got != want {
+			t.Errorf("chunk object = %q, want %q", got, want)
+		}
+		if got, want := chunk.Model, modelName; got != want {
+			t.Errorf("chunk model = %q, want %q", got, want)
+		}
+		if len(chunk.Choices) != 1 {
+			t.Fatalf("chunk choices count = %d, want 1", len(chunk.Choices))
+		}
 
-				Expect(line).To(HavePrefix("data: "))
-				dataStr := strings.TrimPrefix(line, "data: ")
+		fullAnswer += chunk.Choices[0].Delta.Content
+	}
 
-				if dataStr == "[DONE]" {
-					foundDone = true
-					break
-				}
-
-				var chunk map[string]any
-				err := json.Unmarshal([]byte(dataStr), &chunk)
-				Expect(err).NotTo(HaveOccurred(), "Failed to parse chunk JSON")
-
-				Expect(chunk["object"]).To(Equal("chat.completion.chunk"))
-				Expect(chunk["model"]).To(Equal(modelName))
-
-				choices, ok := chunk["choices"].([]any)
-				Expect(ok).To(BeTrue())
-				Expect(choices).NotTo(BeEmpty())
-
-				choice := choices[0].(map[string]any)
-				delta := choice["delta"].(map[string]any)
-
-				if content, ok := delta["content"].(string); ok {
-					fullAnswer += content
-				}
-			}
-
-			Expect(scanner.Err()).NotTo(HaveOccurred())
-			Expect(foundDone).To(BeTrue(), "Expected to receive data: [DONE]")
-			Expect(fullAnswer).To(ContainSubstring("Brasília"))
-		})
-	})
-})
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("read SSE response: %v", err)
+	}
+	if !foundDone {
+		t.Fatal("expected data: [DONE] event")
+	}
+	if !strings.Contains(fullAnswer, "Brasília") {
+		t.Errorf("streamed completion content = %q, want it to contain %q", fullAnswer, "Brasília")
+	}
+}

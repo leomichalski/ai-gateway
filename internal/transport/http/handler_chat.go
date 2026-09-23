@@ -12,15 +12,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/leomichalski/aigateway/internal/domain"
-	"github.com/leomichalski/aigateway/internal/usecases"
+	"github.com/leomichalski/aigateway/internal/port/inbound"
 )
 
 // ChatHandler encapsulates all chat-related HTTP logic.
 type ChatHandler struct {
-	chatUseCase *usecases.ChatUseCase
+	chatUseCase inbound.ChatUseCase
 }
 
-func NewChatHandler(uc *usecases.ChatUseCase) *ChatHandler {
+func NewChatHandler(uc inbound.ChatUseCase) *ChatHandler {
 	return &ChatHandler{
 		chatUseCase: uc,
 	}
