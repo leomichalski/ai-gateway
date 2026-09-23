@@ -27,7 +27,14 @@ var (
 	ErrInternalSecret    = errors.New("failed to retrieve internal secrets")
 
 	// Business / Validation
-	// ErrInvalidRequest = errors.New("invalid gateway request parameters")
+	ErrInvalidRequest = errors.New("invalid gateway request parameters")
+
+	// Secrets / Config
+	ErrSecretNotFound = errors.New("provider secret key not found")
+	ErrSecretNotSet   = errors.New("provider secret key is empty or not configured")
+
+	// Streaming
+	ErrStreamInterrupted = errors.New("streaming connection interrupted by upstream provider")
 )
 
 // =====================================================================

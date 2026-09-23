@@ -2,10 +2,10 @@ package secrets
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/leomichalski/aigateway/internal/port/outbound"
+	"github.com/leomichalski/aigateway/internal/domain"
 )
 
 type EnvSecretProvider struct {}
@@ -23,10 +23,10 @@ func (p *EnvSecretProvider) GetProviderKey(ctx context.Context, name string) (st
 	case "gemini":
 		key = os.Getenv("GOOGLE_API_KEY")
 	default:
-		return "", fmt.Errorf("Provider Key not found for: %s", name)
+		return "", domain.ErrSecretNotFound
     }
 	if key == "" {
-		return "", fmt.Errorf("Provider key is not set.")
+		return "", domain.ErrSecretNotSet
 	}
 	return key, nil
 }

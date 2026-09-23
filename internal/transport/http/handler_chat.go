@@ -8,10 +8,35 @@ import (
 	"iter"
 	"net/http"
 	"time"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/leomichalski/aigateway/internal/domain"
 )
+
+
+// mapDomainToErrorResponse translates pure domain errors into oapi-codegen responses.
+func mapDomainToErrorResponse(err error) (string, string) {
+	switch {
+	case errors.Is(err, domain.ErrInvalidRequest):
+		return "invalid_request_error", err.Error()
+
+	case errors.Is(err, domain.ErrClientCanceled):
+		return "client_canceled", "The request was canceled by the client"
+
+	case errors.Is(err, domain.ErrGatewayTimeout):
+		return "gateway_timeout", "The upstream AI provider timed out"
+
+	case errors.Is(err, domain.ErrProviderFailure):
+		return "upstream_provider_error", "The upstream AI provider failed to process the request"
+
+	case errors.Is(err, domain.ErrSecretNotFound), errors.Is(err, domain.ErrSecretNotSet):
+		return "configuration_error", "The requested AI provider is not properly configured on this gateway"
+
+	default:
+		return "internal_server_error", "An unexpected error occurred"
+	}
+}
 
 // -----------------------------------------------------------------------------
 // POST /v1/chat/completions
@@ -47,8 +72,9 @@ func (s *APIHandler) PostV1ChatCompletion(ctx context.Context, req PostV1ChatCom
 	if domainReq.Stream {
 		streamSeq, err := s.chatUseCase.ProcessChatStream(ctx, domainReq)
 		if err != nil {
+			errType, errMsg := mapDomainToErrorResponse(err)
 			return PostV1ChatCompletion500JSONResponse{
-				Error: ErrorObject{Message: err.Error(), Type: "internal_server_error"},
+				Error: ErrorObject{Message: errMsg, Type: errType},
 			}, nil
 		}
 
@@ -62,11 +88,12 @@ func (s *APIHandler) PostV1ChatCompletion(ctx context.Context, req PostV1ChatCom
 	// Execute Use Case
 	result, err := s.chatUseCase.ProcessChat(ctx, domainReq)
 	if err != nil {
+		errType, errMsg := mapDomainToErrorResponse(err)
 		// Log error internally, but return the standard OpenAI Error schema
 		return PostV1ChatCompletion500JSONResponse{
 			Error: ErrorObject{
-				Message: err.Error(),
-				Type:    "internal_server_error",
+				Message: errMsg,
+				Type:    errType,
 			},
 		}, nil
 	}
@@ -120,10 +147,11 @@ func (r ChatCompletionSSEResponse) VisitPostV1ChatCompletionResponse(w http.Resp
 	for chunk, err := range r.StreamSeq {
 		if err != nil {
 			slog.Debug("Failed while streaming chat completion response.", "error", err)
-			
+
+			errType, errMsg := mapDomainToErrorResponse(err)
 			// Send the error as a JSON event to the client
 			errorPayload := map[string]any{
-				"error": map[string]any{"message": err.Error(), "type": "provider_stream_error"},
+				"error": map[string]any{"message": errMsg, "type": errType},
 			}
 			errData, _ := json.Marshal(errorPayload)
 			fmt.Fprintf(w, "data: %s\n\n", string(errData))
