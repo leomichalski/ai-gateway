@@ -16,11 +16,17 @@ func NewEnvSecretProvider() outbound.SecretProvider {
 }
 
 func (p *EnvSecretProvider) GetProviderKey(ctx context.Context, name string) (string, error) {
+	key := ""
     switch name {
 	// case "openai":
-	// 	return os.Getenv("OPENAI_API_KEY"), nil
+		// key = os.Getenv("OPENAI_API_KEY")
 	case "gemini":
-		return os.Getenv("GOOGLE_API_KEY"), nil
+		key = os.Getenv("GOOGLE_API_KEY")
+	default:
+		return "", fmt.Errorf("Provider Key not found for: %s", name)
     }
-	return "", fmt.Errorf("Provider Key not found for: %s", name)
+	if key == "" {
+		return "", fmt.Errorf("Provider key is not set.")
+	}
+	return key, nil
 }
