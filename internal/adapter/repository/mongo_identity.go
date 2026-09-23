@@ -9,9 +9,6 @@ import (
 	"github.com/leomichalski/aigateway/internal/domain"
 )
 
-// TODO: move to domain/errors.go or to domain/identity.go
-var ErrIdentityNotFound = errors.New("identity not found")
-
 type MongoIdentityRepository struct {
 	collection *mongo.Collection
 }
@@ -35,7 +32,7 @@ func (r *MongoIdentityRepository) GetIdentityByAPIKey(ctx context.Context, keyHa
 	err := r.collection.FindOne(ctx, filter).Decode(&doc)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return domain.Identity{}, ErrIdentityNotFound
+			return domain.Identity{}, domain.ErrIdentityNotFound
 		}
 		// Return other DB connection errors
 		return domain.Identity{}, err

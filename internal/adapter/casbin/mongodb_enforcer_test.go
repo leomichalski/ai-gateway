@@ -2,15 +2,15 @@ package casbin
 
 import (
 	"context"
-	// "fmt"
-	"os"
+	"fmt"
 	"testing"
-	// "time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func TestCasbinMongoEnforcer(t *testing.T) {
@@ -38,16 +38,24 @@ func TestCasbinMongoEnforcer(t *testing.T) {
 	port, err := mongoC.MappedPort(ctx, "27017")
 	require.NoError(t, err)
 
-	// Inject env vars to satisfy our Adapter's requirements
-	os.Setenv("DATABASE_HOST", host)
-	os.Setenv("DATABASE_PORT", port.Port())
-	os.Setenv("DATABASE_USERNAME", "root")
-	os.Setenv("DATABASE_PASSWORD", "password")
-	os.Setenv("DATABASE_NAME", "admin")
+	dbName := "admin"
+	
+	// Construct the URI dynamically using the TestContainer's mapped host/port
+	mongoURI := fmt.Sprintf("mongodb://root:password@%s:%s/%s?authSource=admin", host, port.Port(), dbName)
 
-	// 2. Initialize Adapter
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+	require.NoError(t, err)
+	
+	// Ensure we cleanly disconnect the client after the test finishes
+	defer client.Disconnect(ctx)
+	
+	// Verify the connection actually succeeded
+	err = client.Ping(ctx, nil)
+	require.NoError(t, err, "expected successful ping to mongo testcontainer")
+
+	// Initialize Adapter
 	// Assume casbin_model.conf is stored in a test fixtures directory
-	adapter, err := NewMongoEnforcer("../../../casbin_model.conf")
+	adapter, err := NewMongoEnforcer(client, dbName, "../../../casbin_model.conf")
 	require.NoError(t, err)
 
 	// We cast to our concrete type to access the underlying Casbin Enforcer for seeding data

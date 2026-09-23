@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"fmt"
 	"time"
 	"strings"
 
@@ -40,6 +39,8 @@ var rootCmd = &cobra.Command{
 	Short: "AI Gateway.",
 	Long:  `AI Gateway.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		e := echo.New()
+
 		// =====================================================================
 		// Configure logger
 		// =====================================================================
@@ -51,35 +52,25 @@ var rootCmd = &cobra.Command{
 		slog.SetDefault(logger)
 
 		// =====================================================================
-		// Echo server
+		// Configure secrets/config
 		// =====================================================================
-		e := echo.New()
+		envProvider := secrets.NewEnvProvider()
 
-		// MIDDLEWARES
-		e.Use(middleware.RequestLogger())
-		e.Use(middleware.Recover())
-
-		// AuthN middleware
-		host := os.Getenv("DATABASE_HOST")
-		port := os.Getenv("DATABASE_PORT")
-		user := os.Getenv("DATABASE_USERNAME")
-		pass := os.Getenv("DATABASE_PASSWORD")
-		dbName := os.Getenv("DATABASE_NAME")
-
-		authSource := os.Getenv("DATABASE_AUTH_SOURCE")
-		if authSource == "" {
-			authSource = "admin"
+		dbConfig, err := envProvider.GetDatabaseConfig()
+		if err != nil {
+			slog.Error("failed to load database config", "error", err)
+			os.Exit(1)
 		}
 
-		// Append ?authSource= to the URI
-		mongoURI := fmt.Sprintf("mongodb://%s:%s@%s:%s/%s?authSource=%s",
-			user, pass, host, port, dbName, authSource)
+		// =====================================================================
+		// MongoDB connection
+		// =====================================================================
 
 		// Create a short-lived context JUST for the initial connection
 		startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		client, err := mongo.Connect(startupCtx, options.Client().ApplyURI(mongoURI))
+		client, err := mongo.Connect(startupCtx, options.Client().ApplyURI(dbConfig.URI))
 		cancel() // instantly release resources after Connect finishes (success or fail)
-		
+
 		if err != nil {
 			// Ping it to ensure we actually connected
 			panic("failed to connect to mongodb: " + err.Error())
@@ -88,11 +79,21 @@ var rootCmd = &cobra.Command{
 			panic("failed to ping mongodb: " + err.Error())
 		}
 
-		db := client.Database(dbName)
+		db := client.Database(dbConfig.DBName)
 
+		// =====================================================================
+		// Middlewares
+		// =====================================================================
+
+		// Logger
+		e.Use(middleware.RequestLogger())
+
+		// Recovers from panics anywhere in the chain
+		e.Use(middleware.Recover())
+
+		// Authentication (authn)
 		identityRepo := repository.NewMongoIdentityRepository(db)
 		authNUseCase := usecases.NewAuthNUseCase(identityRepo)
-
 		// Skip authentication for public routes
 		authn_skipper := func(c *echo.Context) bool {
 			path := c.Request().URL.Path
@@ -101,7 +102,8 @@ var rootCmd = &cobra.Command{
 		}
 		e.Use(authn.Middleware(authNUseCase, authn_skipper))
 
-		casbinEnforcer, err := casbin.NewMongoEnforcer("casbin_model.conf")
+		// Authorization (authz)
+		casbinEnforcer, err := casbin.NewMongoEnforcer(client, dbConfig.DBName, "casbin_model.conf")
 		if err != nil {
 			slog.Error("Failed to init Casbin Enforcer.", "error", err)
 			os.Exit(1)
@@ -115,22 +117,33 @@ var rootCmd = &cobra.Command{
 		e.Use(authz.Middleware(authZUseCase, authz_llmmodel_skipper, httpTransport.ExtractLLMModelFromBody))
 		// e.Use(authz.Middleware(authZUseCase, authz_llmmodel_skipper, httpTransport.xxxxxxxxxxx))
 
-		// HANDLERS
+		// =====================================================================
+		// Handlers
+		// =====================================================================
+
+		// Chat handler
 		llmAdapter := adk_runner.NewGoogleADKAdapter()
-		envSecretProvider := secrets.NewEnvSecretProvider()
-		chatUC := usecases.NewChatUseCase(llmAdapter, envSecretProvider)
+		chatUC := usecases.NewChatUseCase(llmAdapter, envProvider)
 		chatHandler := httpTransport.NewChatHandler(chatUC)
 
+		// Template handler
 		// templateHandler := httpTransport.NewTemplateHandler(templateUC)
 
+		// Root handler
 		apiHandler := httpTransport.NewAPIHandler(chatHandler /*, templateHandler */)
 		strictHandler := httpTransport.NewStrictHandler(apiHandler, nil)
 		httpTransport.RegisterHandlers(e, strictHandler)
 
-		// SWAGGER SERVER
+		// =====================================================================
+		// Swagger
+		// =====================================================================
 		if debug {
 			httpTransport.ConfigureSwagger(e)
 		}
+
+		// =====================================================================
+		// Graceful shutdown
+		// =====================================================================
 
 		// Create a context that listens for OS interrupt signals.
 		// When one of these signals occurs, the context is automatically canceled.

@@ -1,14 +1,13 @@
-
 package casbin
 
 import (
 	"context"
 	"fmt"
-	"os"
 
 	casbinlib "github.com/casbin/casbin/v2"
 	mongodbadapter "github.com/casbin/mongodb-adapter/v3"
-	
+	"go.mongodb.org/mongo-driver/mongo"
+
 	"github.com/leomichalski/aigateway/internal/port/outbound"
 )
 
@@ -17,24 +16,15 @@ type MongoEnforcer struct {
 }
 
 // NewMongoEnforcer initializes the Casbin adapter using Env Vars
-func NewMongoEnforcer(modelPath string) (outbound.PermissionEnforcer, error) {
-	host := os.Getenv("DATABASE_HOST")
-	port := os.Getenv("DATABASE_PORT")
-	user := os.Getenv("DATABASE_USERNAME")
-	pass := os.Getenv("DATABASE_PASSWORD")
-	dbName := os.Getenv("DATABASE_NAME")
-
-	authSource := os.Getenv("DATABASE_AUTH_SOURCE")
-	if authSource == "" {
-		authSource = "admin" 
-	}
-
-	// Append ?authSource= to the URI
-	mongoURI := fmt.Sprintf("mongodb://%s:%s@%s:%s/%s?authSource=%s", 
-		user, pass, host, port, dbName, authSource)
-
+func NewMongoEnforcer(client *mongo.Client, dbName string, modelPath string) (outbound.PermissionEnforcer, error) {
 	// Initialize MongoDB adapter for Casbin
-	adapter, err := mongodbadapter.NewAdapter(mongoURI)
+	adapterConfig := &mongodbadapter.AdapterConfig{
+	    DatabaseName: dbName,
+		// CollectionName string
+		// Timeout        time.Duration
+		// IsFiltered     bool
+	}
+	adapter, err := mongodbadapter.NewAdapterByDB(client, adapterConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create casbin mongo adapter: %w", err)
 	}

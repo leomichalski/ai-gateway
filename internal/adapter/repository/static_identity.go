@@ -2,15 +2,11 @@ package repository
 
 import (
 	"context"
-	"errors"
 	
 	"github.com/leomichalski/aigateway/internal/domain"
 )
 
-// TODO: move to domain/errors.go
-var ErrIdentityNotFound = errors.New("identity not found")
-
-// TODO: delete StaticIdentityRepository, an in-memory placeholder waiting for mongodb implementation
+// in-memory placeholder that was waiting for mongodb implementation
 type StaticIdentityRepository struct {
 	store map[string]domain.Identity
 }
@@ -28,5 +24,5 @@ func (r *StaticIdentityRepository) GetIdentityByAPIKey(ctx context.Context, keyH
 	if identity, exists := r.store[keyHash]; exists {
 		return identity, nil
 	}
-	return domain.Identity{}, ErrIdentityNotFound
+	return domain.Identity{}, domain.ErrIdentityNotFound
 }

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestEnvSecretProvider_GetProviderKey(t *testing.T) {
+func TestEnvProvider_GetProviderKey(t *testing.T) {
 	const expectedKey = "test-google-api-key"
 
 	tests := []struct {
@@ -55,7 +55,7 @@ func TestEnvSecretProvider_GetProviderKey(t *testing.T) {
 				t.Setenv("GOOGLE_API_KEY", "")
 			}
 
-			provider := &EnvSecretProvider{}
+			provider := &EnvProvider{}
 
 			got, err := provider.GetProviderKey(
 				context.Background(),
@@ -78,20 +78,5 @@ func TestEnvSecretProvider_GetProviderKey(t *testing.T) {
 				)
 			}
 		})
-	}
-}
-
-func TestNewEnvSecretProvider(t *testing.T) {
-	provider := NewEnvSecretProvider()
-
-	if provider == nil {
-		t.Fatal("NewEnvSecretProvider() returned nil")
-	}
-
-	if _, ok := provider.(*EnvSecretProvider); !ok {
-		t.Fatalf(
-			"NewEnvSecretProvider() returned %T, want *EnvSecretProvider",
-			provider,
-		)
 	}
 }

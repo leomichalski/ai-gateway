@@ -2,20 +2,23 @@ package secrets
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/leomichalski/aigateway/internal/port/outbound"
 	"github.com/leomichalski/aigateway/internal/domain"
 )
 
-type EnvSecretProvider struct {}
+type EnvProvider struct{}
 
-func NewEnvSecretProvider() outbound.SecretProvider {
-	// adkClient: adk.NewClient(os.Getenv("ADK_API_KEY")),
-	return &EnvSecretProvider{}
+func NewEnvProvider() *EnvProvider {
+	return &EnvProvider{}
 }
 
-func (p *EnvSecretProvider) GetProviderKey(ctx context.Context, name string) (string, error) {
+// ---------------------------------------------------------
+// Implements outbound.SecretProvider
+// ---------------------------------------------------------
+func (p *EnvProvider) GetProviderKey(ctx context.Context, name string) (string, error) {
 	key := ""
     switch name {
 	// case "openai":
@@ -29,4 +32,32 @@ func (p *EnvSecretProvider) GetProviderKey(ctx context.Context, name string) (st
 		return "", domain.ErrSecretNotSet
 	}
 	return key, nil
+}
+
+// ---------------------------------------------------------
+// Implements outbound.DatabaseConfigProvider
+// ---------------------------------------------------------
+func (p *EnvProvider) GetDatabaseConfig() (outbound.DatabaseConfig, error) {
+	host := os.Getenv("DATABASE_HOST")
+	port := os.Getenv("DATABASE_PORT")
+	user := os.Getenv("DATABASE_USERNAME")
+	pass := os.Getenv("DATABASE_PASSWORD")
+	dbName := os.Getenv("DATABASE_NAME")
+
+	authSource := os.Getenv("DATABASE_AUTH_SOURCE")
+	if authSource == "" {
+		authSource = "admin"
+	}
+
+	if host == "" || dbName == "" {
+		return outbound.DatabaseConfig{}, fmt.Errorf("missing required database environment variables")
+	}
+
+	uri := fmt.Sprintf("mongodb://%s:%s@%s:%s/%s?authSource=%s",
+		user, pass, host, port, dbName, authSource)
+
+	return outbound.DatabaseConfig{
+		URI:    uri,
+		DBName: dbName,
+	}, nil
 }
