@@ -19,7 +19,7 @@ import (
 const (
 	geminiProvider = "gemini"
 	googleProvider = "google-adk"
-	requestTimeout = 30 * time.Second
+	requestTimeout = 120 * time.Second
 )
 
 // Ensure struct implements the interface at compile time.
