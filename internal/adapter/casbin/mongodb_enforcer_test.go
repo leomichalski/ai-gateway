@@ -51,23 +51,23 @@ func TestCasbinMongoEnforcer(t *testing.T) {
 	require.NoError(t, err)
 
 	// We cast to our concrete type to access the underlying Casbin Enforcer for seeding data
-	impl := adapter.(*MongoEnforcer) 
+	impl := adapter.(*MongoEnforcer)
 
-	// 3. Seed Acceptance Criteria: Tenant 1 allowed gemini-1.5-pro and gpt-4o
-	_, err = impl.enforcer.AddPolicy("tenant-1", "gemini-1.5-pro", "use")
+	// 3. Seed Acceptance Criteria: Tenant 1 allowed gemini-3.5-flash-lite and gemini-3.1-pro-preview
+	_, err = impl.enforcer.AddPolicy("tenant-1", "gemini-3.5-flash-lite", "use")
 	require.NoError(t, err)
-	
-	_, err = impl.enforcer.AddPolicy("tenant-1", "gpt-4o", "use")
+
+	_, err = impl.enforcer.AddPolicy("tenant-1", "gemini-3.1-pro-preview", "use")
 	require.NoError(t, err)
 
 	// 4. Run Tests against the Port Interface
-	t.Run("Given tenant allowed gemini-1.5-pro, Then returns success", func(t *testing.T) {
-		allowed, err := adapter.CheckAccess(ctx, "tenant-1", "gemini-1.5-pro", "use")
+	t.Run("Given tenant allowed gemini-3.5-flash-lite, Then returns success", func(t *testing.T) {
+		allowed, err := adapter.CheckAccess(ctx, "tenant-1", "gemini-3.5-flash-lite", "use")
 		require.NoError(t, err)
 		assert.True(t, allowed)
 	})
 
-	t.Run("Given tenant allowed ONLY gpt-4o, When requests claude-3-5-sonnet, Then returns forbidden", func(t *testing.T) {
+	t.Run("Given tenant allowed ONLY gemini-3.1-pro-preview, When requests claude-3-5-sonnet, Then returns forbidden", func(t *testing.T) {
 		allowed, err := adapter.CheckAccess(ctx, "tenant-1", "claude-3-5-sonnet", "use")
 		require.NoError(t, err)
 		assert.False(t, allowed)

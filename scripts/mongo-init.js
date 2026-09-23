@@ -45,8 +45,8 @@ print("Identities seeded successfully.");
 print("Seeding Casbin Policies...");
 
 const devPolicies = [
-  { ptype: "p", v0: "tenant-local-dev", v1: "gpt-4o", v2: "use" },
-  { ptype: "p", v0: "tenant-local-dev", v1: "gemini-1.5-pro", v2: "use" }
+  { ptype: "p", v0: "tenant-local-dev", v1: "gemini-3.1-pro-preview", v2: "use" },
+  { ptype: "p", v0: "tenant-local-dev", v1: "gemini-3.5-flash-lite", v2: "use" }
 ];
 
 devPolicies.forEach(policy => {
