@@ -19,6 +19,7 @@ services:
       - DATABASE_PASSWORD=notasecret
       - DATABASE_NAME=aigateway
       - DATABASE_AUTH_SOURCE=admin
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:?Set GOOGLE_API_KEY before starting the stack}
     depends_on:
       mongodb:
         condition: service_healthy

@@ -3,11 +3,11 @@
 generate:
 	go tool oapi-codegen -config internal/transport/http/oapi-codegen.yaml api/openapi.yaml
 
-build:
-	go build -o bin main.go
+build: generate
+	docker compose build
 
 run:
-	go run main.go
+	docker compose up --build
 
 test:
 	go test -v ./...
