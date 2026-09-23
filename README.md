@@ -8,7 +8,7 @@
 
 ```mermaid
 flowchart LR
-    client["OpenAI SDK / curl"] -->|"POST /v1/chat/completions"| gateway
+    client["OpenAI SDK / OpenAPI-generated client / curl"] -->|"POST /v1/chat/completions"| gateway
 
     subgraph gateway["AI Gateway"]
         auth["Bearer API key → tenant"] --> rbac["Casbin RBAC<br/>model:use"]
