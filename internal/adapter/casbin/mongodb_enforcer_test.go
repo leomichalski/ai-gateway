@@ -55,7 +55,7 @@ func TestCasbinMongoEnforcer(t *testing.T) {
 
 	// Initialize Adapter
 	// Assume casbin_model.conf is stored in a test fixtures directory
-	adapter, err := NewMongoEnforcer(client, dbName, "../../../casbin_model.conf")
+	adapter, err := NewMongoEnforcer(client, dbName)
 	require.NoError(t, err)
 
 	// We cast to our concrete type to access the underlying Casbin Enforcer for seeding data

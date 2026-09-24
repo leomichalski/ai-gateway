@@ -30,7 +30,6 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 
 COPY --from=builder --chmod=755 /build/aigateway .
-COPY --from=builder /build/casbin_model.conf ./casbin_model.conf
 
 EXPOSE 8080
 
