@@ -51,6 +51,16 @@ var _ = Describe("AI Gateway E2E API Tests with Testcontainers", Ordered, func()
 	// SETUP: Runs once before all tests
 	// =========================================================================
 	BeforeAll(func() {
+		// =====================================================================
+		// GUARD: Fail fast before provisioning expensive Docker containers
+		// =====================================================================
+		googleKey := os.Getenv("GOOGLE_API_KEY")
+		Expect(googleKey).NotTo(BeEmpty(), 
+			"\n\n❌❌❌❌❌ CRITICAL: GOOGLE_API_KEY environment variable must be set before running E2E tests.\n" +
+			"👉👉👉👉👉 Run: export GOOGLE_API_KEY=\"your-gemini-key\"\n",
+		)
+		// =====================================================================
+
 		ctx, cancel = context.WithCancel(context.Background())
 		httpClient = &http.Client{Timeout: 10 * time.Second}
 
@@ -168,7 +178,6 @@ var _ = Describe("AI Gateway E2E API Tests with Testcontainers", Ordered, func()
 			// "REDIS_URI":   redisURI,
 			
 			// Inject any LLM Provider keys needed by the ADK Adapter
-			"GOOGLE_API_KEY": "fake-google-test-key",
 			"DEBUG":          "true",
 		}
 
@@ -212,26 +221,6 @@ var _ = Describe("AI Gateway E2E API Tests with Testcontainers", Ordered, func()
 			defer resp.Body.Close()
 			return resp.StatusCode
 		}, "5s", "100ms").Should(Equal(http.StatusOK), "Echo server failed to start")
-
-
-		// serverDone = make(chan struct{})
-		// go func() {
-		// 	defer close(serverDone)
-		// 	// Start on 8081 so it doesn't conflict with local dev server
-		// 	if err := e.Start(":8081"); err != nil && err != http.ErrServerClosed {
-		// 		panic(err)
-		// 	}
-		// }()
-
-		// // Wait for the server to be healthy
-		// Eventually(func() int {
-		// 	resp, err := httpClient.Get(baseURL + "/healthz")
-		// 	if err != nil {
-		// 		return 0
-		// 	}
-		// 	defer resp.Body.Close()
-		// 	return resp.StatusCode
-		// }, "5s", "100ms").Should(Equal(http.StatusOK), "Echo server failed to start")
 	})
 
 	// =========================================================================

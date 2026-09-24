@@ -207,10 +207,12 @@ The canonical API contract lives in [`api/openapi.yaml`](api/openapi.yaml). Afte
 ### Add a provider adapter
 
 1. Implement `LLMProvider` in `internal/adapter/<provider>/`, covering `GenerateCompletion` and `StreamCompletion`.
-2. Add credential mapping to `SecretProvider`—or provide a secure alternative implementation for your secret manager.
-3. Wire the new adapter in `cmd/root.go` without changing HTTP handlers.
-4. Add unit tests for request mapping, response mapping, errors, and streaming; run `make test`.
-5. Update this provider matrix and the OpenAPI contract whenever the exposed compatibility changes.
+1. Add credential mapping to `SecretProvider`—or provide a secure alternative implementation for your secret manager.
+1. Wire the new adapter in `cmd/root.go` without changing HTTP handlers.
+1. Add unit tests for request mapping, response mapping, errors, and streaming; run `make test`.
+1. Add a **Live Contract / Integration Test** (behind a `//go:build integration` build tag) that executes against the real provider API when the appropriate `API_KEY` is set.
+1. Update the Ginkgo E2E test suite in `./e2e/` to verify the provider works through the Gateway's public endpoint(s).
+1. Update this provider matrix and the OpenAPI contract whenever the exposed compatibility changes.
 
 ## License
 
