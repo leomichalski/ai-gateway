@@ -82,7 +82,7 @@ RAG, agents, and workflows are not goals of this gateway. For those use cases, u
 - **Concurrency:** the HTTP server uses Go/Echo’s concurrency model; rate limits and quotas by tenant, key, model, or cost remain on the roadmap. The project also has no queue or bulkhead.
 - **Resilience:** a 120-second timeout and 10-second graceful shutdown exist. Retry, circuit breaker, and fallback do not yet exist.
 - **Security:** the provider key comes from the environment; the completion route requires a Bearer token and model-level Casbin authorization. 
-- **Contract:** messages are textual; the current Gemini adapter maps `assistant` to the model role and falls back to the user role for all other roles.
+- **Contract:** messages are textual.
 
 ## Supported provider matrix
 
