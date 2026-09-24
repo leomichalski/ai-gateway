@@ -31,6 +31,7 @@ COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 
 COPY --from=builder --chmod=755 /build/aigateway .
 
+EXPOSE 9090
 EXPOSE 8080
 
 ENTRYPOINT ["/app/aigateway"]

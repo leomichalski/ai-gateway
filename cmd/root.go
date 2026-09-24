@@ -13,6 +13,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	echoprometheus "github.com/labstack/echo-prometheus"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	
@@ -31,6 +32,8 @@ import (
 
 var (
 	serverPort string
+	prometheusPort string
+	exportMetrics bool
 	debug bool
 	// environment string
 )
@@ -40,6 +43,19 @@ func BuildServer(client *mongo.Client, dbConfig outbound.DatabaseConfig, envProv
 	// =====================================================================
 	// Middlewares
 	// =====================================================================
+
+	// Adds middleware to gather metrics
+	if exportMetrics {
+		e.Use(echoprometheus.NewMiddleware("aigateway"))
+		// Make `/metrics` endpoint run at prometheusPort, not at serverPort
+		go func() {
+			metrics := echo.New()
+			metrics.GET("/metrics", echoprometheus.NewHandler())
+			if err := metrics.Start(":" + prometheusPort); err != nil {
+				e.Logger.Error("failed to start metrics server", "error", err)
+			}
+		}()
+	}
 
 	// Logger
 	e.Use(middleware.RequestLogger())
@@ -217,6 +233,8 @@ func init() {
 	// rootCmd.Flags().BoolVar(&aA, "a-a", true, "Description.")
 	// rootCmd.Flags().DurationVar(&aA, "a-a", 30*time.Minute, "Description.")
 	rootCmd.Flags().StringVar(&serverPort, "server-port", "8080", "Server port.")
+	rootCmd.Flags().StringVar(&prometheusPort, "prometheus-port", "9090", "Prometheus port. Can't be the same as the server port, as a measure to avoid public `/metrics` leakage.")
+	rootCmd.Flags().BoolVar(&exportMetrics, "export-metrics", true, "Wether to export Prometheus metrics.")
 	rootCmd.Flags().BoolVar(&debug, "debug", false, "Debug mode.")
 	// rootCmd.Flags().StringVar(&environment, "environment", "dev", "Environment (dev or else).")
 }

@@ -69,7 +69,7 @@ The `sk_test_123` token and development permissions are local seeds. **Never use
 | **Rate limits and quotas** | 🗺️ Planned | There are no request, token, cost, or concurrency limits per tenant, key, or model. |
 | **Dynamic routing / fallbacks** | 🗺️ Planned | The gateway instantiates a single `LLMProvider`; it does not select by cost, latency, region, or automatic fallback. |
 | **Semantic caching** | 🗺️ Planned | The chat use case has an extension point, but there is no cache, embeddings, or response storage implemented. |
-| **Observability** | 🗺️ Planned | JSON logs and request logging exist; exported Prometheus metrics and OpenTelemetry traces are not yet wired into the server. |
+| **Observability** | 🗺️ Planned | JSON logs, request logging, and exported Prometheus metrics exist; but OpenTelemetry traces are not yet wired into the server. |
 | **Guardrails / PII masking** | 🗺️ Planned | The runtime does not mask PII or enforce content policies before sending requests to the provider. |
 
 ### Scope boundaries

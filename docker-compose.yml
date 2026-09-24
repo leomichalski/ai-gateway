@@ -11,6 +11,7 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+      - "9090:9090"
     environment:      
       # MongoDB connection variables (matching mongodb)
       - DATABASE_HOST=mongodb
