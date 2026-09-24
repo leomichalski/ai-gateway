@@ -17,6 +17,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	
 	httpTransport "github.com/leomichalski/aigateway/internal/transport/http"
+	"github.com/leomichalski/aigateway/internal/port/outbound"
 	"github.com/leomichalski/aigateway/internal/adapter/adk_runner"
 	"github.com/leomichalski/aigateway/internal/adapter/secrets"
 	"github.com/leomichalski/aigateway/internal/adapter/casbin"
@@ -34,13 +35,69 @@ var (
 	// environment string
 )
 
+func BuildServer(client *mongo.Client, dbConfig outbound.DatabaseConfig, envProvider *secrets.EnvProvider) *echo.Echo {
+    e := echo.New()
+	// =====================================================================
+	// Middlewares
+	// =====================================================================
+
+	// Logger
+	e.Use(middleware.RequestLogger())
+
+	// Recovers from panics anywhere in the chain
+	e.Use(middleware.Recover())
+
+	// Authentication (authn)
+	db := client.Database(dbConfig.DBName)
+	identityRepo := repository.NewMongoIdentityRepository(db)
+	authNUseCase := usecases.NewAuthNUseCase(identityRepo)
+	// Skip authentication for public routes
+	authn_skipper := func(c *echo.Context) bool {
+		path := c.Request().URL.Path
+		// Skip exactly /health, and any path starting with /docs
+		return path == "/healthz" || (debug && strings.HasPrefix(path, "/docs"))
+	}
+	e.Use(authn.Middleware(authNUseCase, authn_skipper))
+
+	// Authorization (authz)
+	casbinEnforcer, err := casbin.NewMongoEnforcer(client, dbConfig.DBName)
+	if err != nil {
+		slog.Error("Failed to init Casbin Enforcer.", "error", err)
+		os.Exit(1)
+	}
+	authZUseCase := usecases.NewAuthZUseCase(casbinEnforcer)
+	// Skips checking model permissions for endpoints other than "/v1/chat/completions"
+	authz_llmmodel_skipper := func(c *echo.Context) bool {
+		path := c.Request().URL.Path
+		return path != "/v1/chat/completions"
+	}
+	e.Use(authz.Middleware(authZUseCase, authz_llmmodel_skipper, httpTransport.ExtractLLMModelFromBody))
+	// e.Use(authz.Middleware(authZUseCase, authz_llmmodel_skipper, httpTransport.xxxxxxxxxxx))
+
+	// =====================================================================
+	// Handlers
+	// =====================================================================
+
+	// Chat handler
+	llmAdapter := adk_runner.NewGoogleADKAdapter()
+	chatUC := usecases.NewChatUseCase(llmAdapter, envProvider)
+	chatHandler := httpTransport.NewChatHandler(chatUC)
+
+	// Template handler
+	// templateHandler := httpTransport.NewTemplateHandler(templateUC)
+
+	// Root handler
+	apiHandler := httpTransport.NewAPIHandler(chatHandler /*, templateHandler */)
+	strictHandler := httpTransport.NewStrictHandler(apiHandler, nil)
+	httpTransport.RegisterHandlers(e, strictHandler)
+    return e
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "aigateway",
 	Short: "AI Gateway.",
 	Long:  `AI Gateway.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		e := echo.New()
-
 		// =====================================================================
 		// Configure logger
 		// =====================================================================
@@ -79,60 +136,10 @@ var rootCmd = &cobra.Command{
 			panic("failed to ping mongodb: " + err.Error())
 		}
 
-		db := client.Database(dbConfig.DBName)
-
 		// =====================================================================
-		// Middlewares
+		// Server
 		// =====================================================================
-
-		// Logger
-		e.Use(middleware.RequestLogger())
-
-		// Recovers from panics anywhere in the chain
-		e.Use(middleware.Recover())
-
-		// Authentication (authn)
-		identityRepo := repository.NewMongoIdentityRepository(db)
-		authNUseCase := usecases.NewAuthNUseCase(identityRepo)
-		// Skip authentication for public routes
-		authn_skipper := func(c *echo.Context) bool {
-			path := c.Request().URL.Path
-			// Skip exactly /health, and any path starting with /docs
-			return path == "/healthz" || (debug && strings.HasPrefix(path, "/docs"))
-		}
-		e.Use(authn.Middleware(authNUseCase, authn_skipper))
-
-		// Authorization (authz)
-		casbinEnforcer, err := casbin.NewMongoEnforcer(client, dbConfig.DBName, "casbin_model.conf")
-		if err != nil {
-			slog.Error("Failed to init Casbin Enforcer.", "error", err)
-			os.Exit(1)
-		}
-		authZUseCase := usecases.NewAuthZUseCase(casbinEnforcer)
-		// Skips checking model permissions for endpoints other than "/v1/chat/completions"
-		authz_llmmodel_skipper := func(c *echo.Context) bool {
-			path := c.Request().URL.Path
-			return path != "/v1/chat/completions"
-		}
-		e.Use(authz.Middleware(authZUseCase, authz_llmmodel_skipper, httpTransport.ExtractLLMModelFromBody))
-		// e.Use(authz.Middleware(authZUseCase, authz_llmmodel_skipper, httpTransport.xxxxxxxxxxx))
-
-		// =====================================================================
-		// Handlers
-		// =====================================================================
-
-		// Chat handler
-		llmAdapter := adk_runner.NewGoogleADKAdapter()
-		chatUC := usecases.NewChatUseCase(llmAdapter, envProvider)
-		chatHandler := httpTransport.NewChatHandler(chatUC)
-
-		// Template handler
-		// templateHandler := httpTransport.NewTemplateHandler(templateUC)
-
-		// Root handler
-		apiHandler := httpTransport.NewAPIHandler(chatHandler /*, templateHandler */)
-		strictHandler := httpTransport.NewStrictHandler(apiHandler, nil)
-		httpTransport.RegisterHandlers(e, strictHandler)
+		e := BuildServer(client, dbConfig, envProvider)
 
 		// =====================================================================
 		// Swagger
